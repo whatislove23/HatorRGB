@@ -6,9 +6,11 @@
 Native macOS menu bar app for the <b>HATOR Gaming Keyboard</b> (USB <code>0416:b23c</code>) —<br>
 the vendor only ships Windows software, so this one was built by reverse-engineering the HID protocol.
 </p>
-https://scontent-iev1-1.cdninstagram.com/v/t51.82787-15/893004066_17991057372117622_9015126014859348543_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=110&ig_cache_key=NDAyNTg1MTU4MTkyNDczNTgwNQ%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuNDAwLnNkci5yZWd1bGFyX3Bob3RvLkMzIn0%3D&_nc_ohc=RTDBtAbo3pgQ7kNvwFOu9nr&_nc_oc=Adp4U3zjnxT8rHQE424F69WrYZf4AF3kobtChLiBYdwDAcc0iWKmRBNbDN8lTtTWmwk&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent-iev1-1.cdninstagram.com&_nc_gid=9mXnyl2F6A16gaiwVEMeJA&_nc_ss=7a22e&oh=00_AQTnEuJV1SQV5pxBzeoE-VIhNm0TdSs3DX3Rl5Zrb_QE5Q&oe=6AF63537
-https://scontent-iev1-1.cdninstagram.com/v/t51.82787-15/892796350_17991057420117622_6758739530423939598_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=105&ig_cache_key=NDAyNTg1MTU4MTk0MTUzMjg3NA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuOTgzLnNkci5yZWd1bGFyX3Bob3RvLkMzIn0%3D&_nc_ohc=i-WZtpo3FuwQ7kNvwF-2xBk&_nc_oc=AdpFic2dVpFG1VQeMQFBOhqv-IcXlrt8is02WIDyTvseFL7NsNWwNo4KfWaveh3qy14&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent-iev1-1.cdninstagram.com&_nc_gid=9mXnyl2F6A16gaiwVEMeJA&_nc_ss=7a22e&oh=00_AQQQCGOyga8FmQs_lrFTD-XRKhfzXRV1ux7PKoSzfjZsgg&oe=6AF625E2
-https://scontent-iev1-1.cdninstagram.com/v/t51.82787-15/887420424_17991059445117622_1888621640975946175_n.jpg?stp=dst-jpg_e35_tt6&_nc_cat=105&ig_cache_key=NDAyNTg1MTU4MTk0MTUwNDM4NA%3D%3D.3-ccb7-5&ccb=7-5&_nc_sid=58cdad&efg=eyJ2ZW5jb2RlX3RhZyI6IkNBUk9VU0VMX0lURU0ueHBpZHMuMTA4My5zZHIucmVndWxhcl9waG90by5DMyJ9&_nc_ohc=r1Ch0t2EnyUQ7kNvwGuLKbV&_nc_oc=AdoO1_NWTTHLiwPz2bo7D060axZR1gkerzLGQLZlh6x2nOssMPyNY2MuaK9f3HTkKOs&_nc_ad=z-m&_nc_cid=0&_nc_zt=23&_nc_ht=scontent-iev1-1.cdninstagram.com&_nc_gid=9mXnyl2F6A16gaiwVEMeJA&_nc_ss=7a22e&oh=00_AQSAqwxR5YI5GEhG0WTC8OrVpbMUmcalrlGS9DuIyAmt1Q&oe=6AF63012
+<p align="center"><img width="400" height="466" alt="image" src="https://github.com/user-attachments/assets/b8d24445-0a37-4f79-b019-3f042fa0c8fd" /></p>
+<p align="center"><img width="983" height="460" alt="image" src="https://github.com/user-attachments/assets/3a2c1ad0-8a41-4f79-afd0-0ba3466d88ac" /></p>
+<p align="center"><img width="983" height="460" alt="image" src="https://github.com/user-attachments/assets/a02ceb89-0ead-41d7-9b9d-95ce0bdb761b" />
+</p>
+
 <p align="center"><a href="#українською">🇺🇦 Українською</a></p>
 
 > **Unofficial.** Not affiliated with or endorsed by HATOR.
