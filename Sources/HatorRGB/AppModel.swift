@@ -22,6 +22,8 @@ struct StoredState: Codable, Equatable {
     var fKeys = FKeyMapping.macBook
     /// ⌘ next to the space bar (Win ↔ Alt). Starts from what System Settings has.
     var swapWinAlt = KeyRemapper.systemSwapsWinAlt()
+    /// Pulse the keyboard orange while a Claude Code session waits for the user.
+    var claudeAlert = true
 
     init() {}
     // Tolerate state saved by older versions (missing keys fall back to defaults).
@@ -37,6 +39,7 @@ struct StoredState: Codable, Equatable {
         remapEnabled = try c.decodeIfPresent(Bool.self, forKey: .remapEnabled) ?? d.remapEnabled
         fKeys = try c.decodeIfPresent(FKeyMapping.self, forKey: .fKeys) ?? d.fKeys
         swapWinAlt = try c.decodeIfPresent(Bool.self, forKey: .swapWinAlt) ?? d.swapWinAlt
+        claudeAlert = try c.decodeIfPresent(Bool.self, forKey: .claudeAlert) ?? d.claudeAlert
     }
 }
 
@@ -52,6 +55,7 @@ final class AppModel: ObservableObject {
             }
             let lightingChanged = state.mode != oldValue.mode || state.effect != oldValue.effect
                 || state.perKey != oldValue.perKey || state.perKeyBrightness != oldValue.perKeyBrightness
+                || state.claudeAlert != oldValue.claudeAlert
             if lightingChanged && !ledOverride { scheduleApply() }
         }
     }
@@ -59,6 +63,10 @@ final class AppModel: ObservableObject {
     @Published var lastError: String?
     /// While true (calibration, games), a view drives the LEDs directly via `showFrame`.
     @Published var ledOverride = false
+    /// Claude Code sessions currently waiting for the user, with when they started waiting.
+    @Published private(set) var claudeWaiting: [String: Date] = [:]
+    var claudeAlertActive: Bool { state.claudeAlert && !claudeWaiting.isEmpty }
+    private static let claudeStaleAfter: TimeInterval = 2 * 60 * 60
 
     private let device = HatorDevice()
     private var pending: Task<Void, Never>?
@@ -76,6 +84,21 @@ final class AppModel: ObservableObject {
         }
         connected = device.isConnected
         if connected { applyNow(); applyRemap() }
+        DistributedNotificationCenter.default().addObserver(
+            forName: ClaudeSignal.name, object: nil, queue: .main
+        ) { [weak self] note in
+            let session = note.object as? String ?? "default"
+            let wait = (note.userInfo?["state"] as? String) == ClaudeSignal.State.wait.rawValue
+            MainActor.assumeIsolated { self?.claudeSignal(session: session, waiting: wait) }
+        }
+        // Forget sessions that never reported back (crashed / closed without SessionEnd).
+        Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let fresh = self.claudeWaiting.filter { Date().timeIntervalSince($0.value) < Self.claudeStaleAfter }
+                if fresh.count != self.claudeWaiting.count { self.claudeWaiting = fresh; self.refreshLighting() }
+            }
+        }
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { _ in try? KeyRemapper.clear() } // on quit, hand the keys back to System Settings' config
@@ -119,9 +142,41 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func claudeSignal(session: String, waiting: Bool) {
+        let wasActive = claudeAlertActive
+        if waiting { claudeWaiting[session] = claudeWaiting[session] ?? Date() } else { claudeWaiting[session] = nil }
+        if claudeAlertActive != wasActive { refreshLighting() }
+    }
+
+    func clearClaudeAlert() {
+        claudeWaiting = [:]
+        refreshLighting()
+    }
+
+    private func refreshLighting() {
+        if !ledOverride { applyNow() }
+    }
+
+    /// Soft orange pulse using the keyboard's own breathe effect (smooth, no CPU).
+    static let claudePulse: EffectSettings = {
+        var s = EffectSettings()
+        s.effect = .breathe
+        s.foreground = RGB(255, 90, 0)
+        s.background = .black
+        s.brightness = 4
+        s.speed = 1
+        s.rainbow = false
+        return s
+    }()
+
     func applyNow() {
         guard connected else { return }
         do {
+            if claudeAlertActive {
+                try device.apply(Self.claudePulse)
+                lastError = nil
+                return
+            }
             switch state.mode {
             case .effect: try device.apply(state.effect)
             case .perKey: try device.applyPerKey(state.perKey, brightness: state.perKeyBrightness)

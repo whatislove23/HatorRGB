@@ -18,6 +18,23 @@
 - **F1–F12 як медіаклавіші** (як на MacBook): яскравість, Mission Control, Spotlight, Launchpad, сон, музика, гучність. Кожну клавішу можна перепризначити. Працює лише для HATOR, через `hidutil` (UserKeyMapping) на рівні драйвера, без дозволів Accessibility. Коли застосунок закривається, перепризначення знімається. Якщо в тебе є Karabiner-Elements, вимкни в ньому перехоплення HATOR (Devices → Modify events = off), бо інакше він обійде це перепризначення.
 - Налаштування зберігаються. Після перепідключення клавіатури застосунок сам відновлює підсвітку. Є опція автозапуску при вході в систему.
 
+## Сигнал від Claude Code
+
+Коли сесія Claude Code чекає на твою відповідь або апрув, клавіатура плавно блимає помаранчевим (вбудований ефект Breathe). Щойно ти відповідаєш, повертається звичайна підсвітка. Сигнал вмикається й вимикається перемикачем у меню. Сесії відстежуються окремо за `session_id`.
+
+Щоб це працювало, додай хуки в `~/.claude/settings.json`:
+
+```json
+"hooks": {
+  "Notification": [{ "matcher": "permission_prompt|idle_prompt|elicitation_dialog|agent_needs_input",
+                     "hooks": [{ "type": "command", "command": "\"$HOME/Applications/HatorRGB.app/Contents/Resources/hator\" claude wait 2>/dev/null || true" }] }],
+  "Stop":             [{ "hooks": [{ "type": "command", "command": "\"$HOME/Applications/HatorRGB.app/Contents/Resources/hator\" claude wait 2>/dev/null || true" }] }],
+  "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "\"$HOME/Applications/HatorRGB.app/Contents/Resources/hator\" claude clear 2>/dev/null || true" }] }],
+  "PostToolUse":      [{ "hooks": [{ "type": "command", "command": "\"$HOME/Applications/HatorRGB.app/Contents/Resources/hator\" claude clear 2>/dev/null || true" }] }],
+  "SessionEnd":       [{ "hooks": [{ "type": "command", "command": "\"$HOME/Applications/HatorRGB.app/Contents/Resources/hator\" claude clear 2>/dev/null || true" }] }]
+}
+```
+
 ## CLI
 
 ```bash

@@ -9,6 +9,7 @@ usage:
   hator fill RRGGBB [--brightness 0-4]     all keys one colour (per-key mode)
   hator slot N [RRGGBB]                    light only LED slot N (0-131), for mapping
   hator off
+  hator claude wait|clear               signal from a Claude Code hook (JSON on stdin)
 """
 
 func fail(_ msg: String) -> Never {
@@ -19,6 +20,14 @@ func fail(_ msg: String) -> Never {
 var args = Array(CommandLine.arguments.dropFirst())
 guard let cmd = args.first else { fail(usage) }
 args.removeFirst()
+
+// Claude Code hook: `hator claude wait|clear` (hook JSON on stdin). Never needs the keyboard, never fails.
+if cmd == "claude" {
+    let state = ClaudeSignal.State(rawValue: args.first ?? "") ?? .clear
+    let input = isatty(STDIN_FILENO) == 0 ? FileHandle.standardInput.readDataToEndOfFile() : Data()
+    ClaudeSignal.post(state, hookInput: input)
+    exit(0)
+}
 
 func option(_ name: String) -> String? {
     guard let i = args.firstIndex(of: name), i + 1 < args.count else { return nil }

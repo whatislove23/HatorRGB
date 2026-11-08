@@ -62,6 +62,9 @@ struct MenuView: View {
             }
 
             Divider()
+            ClaudeAlertControls()
+
+            Divider()
             FKeyControls()
 
             if let err = model.lastError {
@@ -214,6 +217,30 @@ struct FKeyControls: View {
                 .disabled(!model.state.remapEnabled)
                 Button("Як на MacBook") { model.state.fKeys = .macBook }
                     .controlSize(.small)
+            }
+        }
+    }
+}
+
+struct ClaudeAlertControls: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        HStack {
+            Toggle(isOn: $model.state.claudeAlert) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Сигнал від Claude")
+                    Text(model.claudeWaiting.isEmpty
+                         ? "Блимає помаранчевим, коли Claude чекає на тебе"
+                         : "Claude чекає на відповідь (\(model.claudeWaiting.count))")
+                        .font(.caption)
+                        .foregroundStyle(model.claudeWaiting.isEmpty ? Color.secondary : Color.orange)
+                }
+            }
+            .toggleStyle(.switch).controlSize(.small)
+            if !model.claudeWaiting.isEmpty {
+                Spacer()
+                Button("Зняти") { model.clearClaudeAlert() }.controlSize(.small)
             }
         }
     }
