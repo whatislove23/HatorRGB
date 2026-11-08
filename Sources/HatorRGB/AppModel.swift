@@ -67,6 +67,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var claudeWaiting: [String: Date] = [:]
     var claudeAlertActive: Bool { state.claudeAlert && !claudeWaiting.isEmpty }
     private static let claudeStaleAfter: TimeInterval = 2 * 60 * 60
+    private var focusWatch: Timer?
+
+    /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
+    static let claudeApps: Set<String> = [
+        "com.anthropic.claudefordesktop",
+        "com.apple.Terminal", "com.googlecode.iterm2", "dev.warp.Warp-Stable", "com.mitchellh.ghostty",
+        "com.github.wez.wezterm", "org.alacritty", "net.kovidgoyal.kitty", "dev.zed.Zed",
+        "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf",
+    ]
 
     private let device = HatorDevice()
     private var pending: Task<Void, Never>?
@@ -96,7 +105,9 @@ final class AppModel: ObservableObject {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 let fresh = self.claudeWaiting.filter { Date().timeIntervalSince($0.value) < Self.claudeStaleAfter }
-                if fresh.count != self.claudeWaiting.count { self.claudeWaiting = fresh; self.refreshLighting() }
+                if fresh.count != self.claudeWaiting.count {
+                    self.claudeWaiting = fresh; self.updateFocusWatch(); self.refreshLighting()
+                }
             }
         }
         NotificationCenter.default.addObserver(
@@ -146,10 +157,39 @@ final class AppModel: ObservableObject {
         let wasActive = claudeAlertActive
         if waiting { claudeWaiting[session] = claudeWaiting[session] ?? Date() } else { claudeWaiting[session] = nil }
         if claudeAlertActive != wasActive { refreshLighting() }
+        updateFocusWatch()
+    }
+
+    /// While a session waits, check once a second whether you're back with Claude: a Claude/terminal
+    /// app is frontmost and you've pressed a key or used the mouse since the signal started.
+    /// Uses the system idle counter, so no Input Monitoring permission is needed.
+    private func updateFocusWatch() {
+        if claudeWaiting.isEmpty {
+            focusWatch?.invalidate()
+            focusWatch = nil
+        } else if focusWatch == nil {
+            focusWatch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.checkUserBackWithClaude() }
+            }
+        }
+    }
+
+    private func checkUserBackWithClaude() {
+        guard let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+              Self.claudeApps.contains(front) else { return }
+        let anyInput = CGEventType(rawValue: ~0)!
+        let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
+        let lastInput = Date().addingTimeInterval(-idle)
+        let seen = claudeWaiting.filter { $0.value < lastInput }
+        guard !seen.isEmpty else { return }
+        for key in seen.keys { claudeWaiting[key] = nil }
+        if !claudeAlertActive { refreshLighting() }
+        updateFocusWatch()
     }
 
     func clearClaudeAlert() {
         claudeWaiting = [:]
+        updateFocusWatch()
         refreshLighting()
     }
 
