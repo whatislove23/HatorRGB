@@ -9,8 +9,9 @@ the vendor only ships Windows software, so this one was built by reverse-enginee
 
 <p align="center"><a href="#українською">🇺🇦 Українською</a></p>
 
-> **Unofficial.** Not affiliated with or endorsed by HATOR. Tested on one keyboard with USB ID `0416:b23c`
-> (Nuvoton NUC121). Other keyboards with the same ID (Pulsar PCMK TKL, KT108, …) likely work too.
+> **Unofficial.** Not affiliated with or endorsed by HATOR.
+> Developed and tested on the **HATOR Rockfall EVO TKL Optical** (USB ID `0416:b23c`, Nuvoton NUC121).
+> Other keyboards with the same USB ID (Pulsar PCMK TKL, KT108, …) likely work too.
 
 ## Features
 
@@ -100,7 +101,7 @@ Based on [Daniel Gibson's notes on the Pulsar PCMK TKL](https://gist.github.com/
 
 Нативний застосунок для macOS у рядку меню, що керує клавіатурою **HATOR Gaming Keyboard** (USB `0416:b23c`). Офіційний софт є лише для Windows, тому протокол довелося розібрати самому.
 
-> **Неофіційний проєкт**, не пов'язаний з HATOR. Перевірено на клавіатурі з USB ID `0416:b23c`.
+> **Неофіційний проєкт**, не пов'язаний з HATOR. Розроблено й перевірено на **HATOR Rockfall EVO TKL Optical** (USB ID `0416:b23c`).
 
 **Можливості:**
 - **RGB-ефекти** з кольором, фоном, яскравістю, швидкістю та напрямком.
