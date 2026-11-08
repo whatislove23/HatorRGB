@@ -101,8 +101,30 @@ public enum KeyRemapper {
         }
     }
 
-    public static func apply(_ mapping: FKeyMapping?) throws {
+    // HID keyboard usages: left/right Alt (Option) and Win (Command).
+    private static let lAlt: UInt64 = 0x7_0000_00E2, lWin: UInt64 = 0x7_0000_00E3
+    private static let rAlt: UInt64 = 0x7_0000_00E6, rWin: UInt64 = 0x7_0000_00E7
+    private static var winAltKeys: Set<UInt64> { [lAlt, lWin, rAlt, rWin] }
+    private static var winAltSwap: [(UInt64, UInt64)] {
+        [(lAlt, lWin), (lWin, lAlt), (rAlt, rWin), (rWin, rAlt)]
+    }
+
+    /// Whether System Settings currently swaps Win and Alt on this keyboard (used as the initial toggle state).
+    public static func systemSwapsWinAlt() -> Bool {
+        let m = Dictionary(systemModifierMapping(), uniquingKeysWith: { a, _ in a })
+        return m[lWin] == lAlt && m[lAlt] == lWin
+    }
+
+    /// - Parameters:
+    ///   - mapping: F-key actions, or nil for plain F-keys.
+    ///   - swapWinAlt: put ⌘ next to the space bar (Win ↔ Alt). nil = leave it as System Settings has it.
+    ///     Other modifier settings from System Settings (e.g. Caps Lock → Esc) are always kept.
+    public static func apply(_ mapping: FKeyMapping?, swapWinAlt: Bool? = nil) throws {
         var pairs = systemModifierMapping()
+        if let swapWinAlt {
+            pairs.removeAll { winAltKeys.contains($0.0) }
+            if swapWinAlt { pairs += winAltSwap }
+        }
         if let mapping {
             for (i, action) in mapping.actions.enumerated() where action != .functionKey {
                 pairs.append((fKeyUsage(i), action.rawValue))

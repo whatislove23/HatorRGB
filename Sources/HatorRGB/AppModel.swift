@@ -20,6 +20,8 @@ struct StoredState: Codable, Equatable {
     var presets: [Preset] = []
     var remapEnabled = true
     var fKeys = FKeyMapping.macBook
+    /// ⌘ next to the space bar (Win ↔ Alt). Starts from what System Settings has.
+    var swapWinAlt = KeyRemapper.systemSwapsWinAlt()
 
     init() {}
     // Tolerate state saved by older versions (missing keys fall back to defaults).
@@ -34,6 +36,7 @@ struct StoredState: Codable, Equatable {
         presets = try c.decodeIfPresent([Preset].self, forKey: .presets) ?? d.presets
         remapEnabled = try c.decodeIfPresent(Bool.self, forKey: .remapEnabled) ?? d.remapEnabled
         fKeys = try c.decodeIfPresent(FKeyMapping.self, forKey: .fKeys) ?? d.fKeys
+        swapWinAlt = try c.decodeIfPresent(Bool.self, forKey: .swapWinAlt) ?? d.swapWinAlt
     }
 }
 
@@ -43,7 +46,8 @@ final class AppModel: ObservableObject {
         didSet {
             guard state != oldValue else { return }
             save()
-            if state.remapEnabled != oldValue.remapEnabled || state.fKeys != oldValue.fKeys {
+            if state.remapEnabled != oldValue.remapEnabled || state.fKeys != oldValue.fKeys
+                || state.swapWinAlt != oldValue.swapWinAlt {
                 applyRemap()
             }
             let lightingChanged = state.mode != oldValue.mode || state.effect != oldValue.effect
@@ -74,13 +78,13 @@ final class AppModel: ObservableObject {
         if connected { applyNow(); applyRemap() }
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
-        ) { _ in try? KeyRemapper.clear() } // give the keys back when the app quits
+        ) { _ in try? KeyRemapper.clear() } // on quit, hand the keys back to System Settings' config
     }
 
     func applyRemap() {
         guard connected else { return }
         do {
-            try KeyRemapper.apply(state.remapEnabled ? state.fKeys : nil)
+            try KeyRemapper.apply(state.remapEnabled ? state.fKeys : nil, swapWinAlt: state.swapWinAlt)
         } catch {
             lastError = error.localizedDescription
         }

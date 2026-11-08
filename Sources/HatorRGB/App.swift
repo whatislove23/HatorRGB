@@ -180,6 +180,14 @@ struct FKeyControls: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $model.state.swapWinAlt) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Win ↔ Alt")
+                    Text("⌘ біля пробілу, як на Mac").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch).controlSize(.small)
+
             HStack {
                 Toggle("F1–F12 як медіаклавіші", isOn: $model.state.remapEnabled)
                     .toggleStyle(.switch).controlSize(.small)
