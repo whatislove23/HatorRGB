@@ -1,28 +1,50 @@
-# HatorRGB
+<p align="center"><img src="docs/icon.png" width="128" alt="HatorRGB icon"></p>
 
-Нативний застосунок для macOS (рядок меню), що керує підсвіткою **HATOR Gaming Keyboard** (USB `0416:b23c`, чип Nuvoton NUC121).
+<h1 align="center">HatorRGB</h1>
 
-## Збірка та встановлення
+<p align="center">
+Native macOS menu bar app for the <b>HATOR Gaming Keyboard</b> (USB <code>0416:b23c</code>) —<br>
+the vendor only ships Windows software, so this one was built by reverse-engineering the HID protocol.
+</p>
+
+<p align="center"><a href="#українською">🇺🇦 Українською</a></p>
+
+> **Unofficial.** Not affiliated with or endorsed by HATOR. Tested on one keyboard with USB ID `0416:b23c`
+> (Nuvoton NUC121). Other keyboards with the same ID (Pulsar PCMK TKL, KT108, …) likely work too.
+
+## Features
+
+- **RGB effects**: Static, Breathe, Wave, Neon, Snake, Reactive, Aurora and Ripple. You can set the colour, background, brightness, speed, direction and rainbow mode. Changes apply live.
+- **Per-key colours**: an editor window where you paint keys by clicking or dragging. ⌥-click picks up a key's colour. Includes fill-all and presets.
+- **Layout calibration**: the app lights each of the 132 LEDs in turn and you press the key that's lit, so the editor matches your exact model.
+- **F1–F12 as Mac media keys**: brightness, Mission Control, Spotlight, Launchpad, sleep, music and volume. Every key is configurable. Remapping happens at the HID driver level (`hidutil`) and affects only the HATOR keyboard; no Accessibility permission is needed.
+- **Win ↔ Alt toggle**: puts ⌘ next to the space bar. Your other System Settings modifier-key settings are kept.
+- **Claude Code alert**: the keyboard softly pulses orange while a Claude Code session waits for your reply or approval. It stops when you answer, or when you come back to Claude or a terminal and touch the keyboard or mouse.
+- **Snake on the keyboard**: every lit key is a pixel and the arrow keys steer.
+- Settings persist and lighting is restored after you reconnect the keyboard. Optional launch at login.
+
+## Install
+
+1. Download `HatorRGB-x.y.z.zip` from [Releases](https://github.com/whatislove23/HatorRGB/releases), unzip it and move `HatorRGB.app` to Applications. The app is universal (Apple Silicon + Intel) and needs macOS 13+.
+2. The app is not notarized, so the first time **right-click → Open → Open**. If macOS still refuses, run:
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/HatorRGB.app
+   ```
+3. A keyboard icon appears in the menu bar.
+
+### Build from source
 
 ```bash
-./build-app.sh --install   # збирає HatorRGB.app, копіює в ~/Applications і запускає
+git clone https://github.com/whatislove23/HatorRGB.git
+cd HatorRGB
+./build-app.sh --install     # builds HatorRGB.app, copies it to ~/Applications and launches it
 ```
 
-Потрібні Xcode / Command Line Tools (Swift 5.9+) і macOS 13+.
+This requires Xcode or the Command Line Tools (Swift 5.9+).
 
-## Можливості
+## Claude Code alert setup
 
-- **Ефекти:** Static, Breathe, Wave, Neon, Snake, Reactive, Aurora, Ripple. Можна задати колір, колір фону, яскравість, швидкість, напрямок і режим веселки.
-- **Поклавішно:** окреме вікно-редактор. Фарбуєш клавіші кліком або протягуванням, ⌥-клік бере колір з клавіші. Можна залити все одним кольором і зберігати пресети.
-- **Калібрування розкладки:** застосунок по черзі запалює кожен із 132 світлодіодів, а ти натискаєш клавішу, що світиться. Так редактор показує точну розкладку саме твоєї моделі.
-- **F1–F12 як медіаклавіші** (як на MacBook): яскравість, Mission Control, Spotlight, Launchpad, сон, музика, гучність. Кожну клавішу можна перепризначити. Працює лише для HATOR, через `hidutil` (UserKeyMapping) на рівні драйвера, без дозволів Accessibility. Коли застосунок закривається, перепризначення знімається. Якщо в тебе є Karabiner-Elements, вимкни в ньому перехоплення HATOR (Devices → Modify events = off), бо інакше він обійде це перепризначення.
-- Налаштування зберігаються. Після перепідключення клавіатури застосунок сам відновлює підсвітку. Є опція автозапуску при вході в систему.
-
-## Сигнал від Claude Code
-
-Коли сесія Claude Code чекає на твою відповідь або апрув, клавіатура плавно блимає помаранчевим (вбудований ефект Breathe). Сигнал знімається, коли ти відповідаєш, даєш апрув або закриваєш сесію. Ще він знімається, коли переходиш у вікно Claude, термінал чи редактор (Terminal, iTerm2, Warp, Ghostty, VS Code, Cursor тощо) і там натискаєш клавішу або рухаєш мишкою. Для цього використовується системний лічильник простою, тож дозвіл Input Monitoring не потрібен. Сигнал вмикається й вимикається перемикачем у меню. Сесії відстежуються окремо за `session_id`.
-
-Щоб це працювало, додай хуки в `~/.claude/settings.json`:
+Add these hooks to `~/.claude/settings.json`. Adjust the path if the app is in `/Applications`.
 
 ```json
 "hooks": {
@@ -35,20 +57,59 @@
 }
 ```
 
+Sessions are tracked by `session_id`, so several Claude sessions at once work fine.
+
 ## CLI
 
+The app bundle includes a `hator` command-line tool:
+
 ```bash
-.build/release/hator effect wave --rainbow --speed 3
-.build/release/hator effect static --color 00ffaa --brightness 2
-.build/release/hator fill ff0000
-.build/release/hator slot 17          # запалити один слот, для дослідження
+H=~/Applications/HatorRGB.app/Contents/Resources/hator
+$H effect wave --rainbow --speed 3
+$H effect static --color 00ffaa --brightness 2
+$H fill ff0000
+$H slot 17            # light a single LED slot (for mapping)
 ```
 
-## Протокол
+## Notes
 
-Vendor HID-інтерфейс: usage page `0xFF1B`, report ID 1, output-репорти по 63 байти.
+- If you use **Karabiner-Elements**, turn off "Modify events" for the HATOR keyboard in Karabiner → Devices. Otherwise Karabiner bypasses the remapping.
+- Key remapping only lasts while the app is running. On quit, your System Settings modifier configuration is restored.
 
-- `07 00 00 00 0E <effect> <brightness 0-4> <speed 0-4> <fg RGB> <bg RGB> <direction> <rainbow>` — встановлює ефект для клавіш. Команда `08` з `0D` замість `0E` робить те саме для логотипа.
-- `09 00 00 <msg 0-7> <len> <RGB…>` — поклавішні кольори: 8 повідомлень, разом 6×22 = 132 слоти. Канали насичуються на `0xC1`. Після них надсилається ефект `0x0A` (custom).
+## Protocol
 
-Протокол взято з [дослідження Pulsar PCMK TKL](https://gist.github.com/DanielGibson/cd92c5faa6b2e0426351dc44193c6182) і перевірено на HATOR.
+Vendor HID interface: usage page `0xFF1B`, usage `0x91`, report ID 1, 63-byte output reports.
+
+| Payload | Meaning |
+|---|---|
+| `07 00 00 00 0E EF BR SP  R G B  R G B  DR FC` | Key effect: effect, brightness 0–4, speed 0–4, foreground, background, direction, full-colour. `08 … 0D …` sets the logo instead. |
+| `09 00 00 NN LL  RGB…` | Per-key colours, message `NN` 0–7. Covers 132 slots on a 6 × 22 matrix; channels max out at `0xC1`. Follow with effect `0x0A` (custom). |
+
+Effects: 0 static, 1 breathe, 2 wave, 3 neon, 5 snake, 6 reactive, 7 aurora, 8 ripple, 10 per-key.
+Directions: 0 right, 1 left, 2 up, 3 down, 4 out, 5 in, 6 cw, 7 ccw.
+
+Based on [Daniel Gibson's notes on the Pulsar PCMK TKL](https://gist.github.com/DanielGibson/cd92c5faa6b2e0426351dc44193c6182), which uses the same controller, and verified on HATOR.
+
+## License
+
+[MIT](LICENSE)
+
+---
+
+## Українською
+
+Нативний застосунок для macOS у рядку меню, що керує клавіатурою **HATOR Gaming Keyboard** (USB `0416:b23c`). Офіційний софт є лише для Windows, тому протокол довелося розібрати самому.
+
+> **Неофіційний проєкт**, не пов'язаний з HATOR. Перевірено на клавіатурі з USB ID `0416:b23c`.
+
+**Можливості:**
+- **RGB-ефекти** з кольором, фоном, яскравістю, швидкістю та напрямком.
+- **Поклавішний редактор кольорів** із пресетами та калібруванням розкладки.
+- **F1–F12 як медіаклавіші Mac**: яскравість, Spotlight, сон, музика, гучність. Працює лише для HATOR, дозволи не потрібні.
+- **Перемикач Win ↔ Alt**: ⌘ біля пробілу, як на Mac.
+- **Сигнал від Claude Code**: клавіатура плавно блимає помаранчевим, коли Claude чекає на твою відповідь або апрув. Налаштування хуків описано вище.
+- **Змійка просто на підсвітці клавіатури**, керування стрілками.
+
+**Встановлення:** завантаж zip із [Releases](https://github.com/whatislove23/HatorRGB/releases) і перенеси `HatorRGB.app` у «Програми». Застосунок не нотаризований, тому першого разу відкривай через **правий клік → Відкрити**. Якщо macOS однаково блокує, виконай команду `xattr -dr com.apple.quarantine /Applications/HatorRGB.app`.
+
+**Збірка з коду:** `./build-app.sh --install`.
