@@ -84,19 +84,38 @@ public enum KeyRemapper {
     /// HID keyboard usage of F1 is 0x3A; F1…F12 are contiguous.
     private static func fKeyUsage(_ index: Int) -> UInt64 { 0x7_0000_0000 | UInt64(0x3A + index) }
 
+    /// macOS stores System Settings → Keyboard → Modifier Keys for this keyboard here and applies it
+    /// through the same UserKeyMapping property — so it must be included, or setting ours wipes it.
+    private static let systemPrefKey =
+        "com.apple.keyboard.modifiermapping.\(HatorProtocol.vendorID)-\(HatorProtocol.productID)-0"
+
+    /// The user's modifier-key remapping for this keyboard (e.g. Win ↔ Alt), as (src, dst) pairs.
+    public static func systemModifierMapping() -> [(UInt64, UInt64)] {
+        guard let list = CFPreferencesCopyValue(systemPrefKey as CFString, kCFPreferencesAnyApplication,
+                                                kCFPreferencesCurrentUser, kCFPreferencesCurrentHost)
+                as? [[String: Any]] else { return [] }
+        return list.compactMap { e in
+            guard let s = (e["HIDKeyboardModifierMappingSrc"] as? NSNumber)?.uint64Value,
+                  let d = (e["HIDKeyboardModifierMappingDst"] as? NSNumber)?.uint64Value else { return nil }
+            return (s, d)
+        }
+    }
+
     public static func apply(_ mapping: FKeyMapping?) throws {
-        var entries: [String] = []
+        var pairs = systemModifierMapping()
         if let mapping {
             for (i, action) in mapping.actions.enumerated() where action != .functionKey {
-                entries.append(String(
-                    format: "{\"HIDKeyboardModifierMappingSrc\":%llu,\"HIDKeyboardModifierMappingDst\":%llu}",
-                    fKeyUsage(i), action.rawValue))
+                pairs.append((fKeyUsage(i), action.rawValue))
             }
+        }
+        let entries = pairs.map {
+            String(format: "{\"HIDKeyboardModifierMappingSrc\":%llu,\"HIDKeyboardModifierMappingDst\":%llu}", $0.0, $0.1)
         }
         try run(["property", "--matching", matching,
                  "--set", "{\"UserKeyMapping\":[\(entries.joined(separator: ","))]}"])
     }
 
+    /// Removes our F-key remap, leaving only the system modifier-key settings.
     public static func clear() throws { try apply(nil) }
 
     private static func run(_ args: [String]) throws {
