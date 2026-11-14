@@ -65,6 +65,7 @@ struct MenuView: View {
             ClaudeAlertControls()
             BadgeAlertControls()
             HotkeyOverlayControls()
+            VisualizerControls()
 
             Divider()
             FKeyControls()
@@ -305,6 +306,30 @@ struct HotkeyOverlayControls: View {
                     Button("Відкрити") { MenuShortcutReader.openSettings() }.controlSize(.small)
                 }
             }
+        }
+    }
+}
+
+struct VisualizerControls: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        Toggle(isOn: $model.state.visualizer) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Візуалізатор музики")
+                Text(AppModel.visualizerSupported
+                     ? "Еквалайзер на клаві, поки Mac грає звук"
+                     : "Потрібна macOS 14.2 або новіша")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .toggleStyle(.switch).controlSize(.small)
+        .disabled(!AppModel.visualizerSupported)
+        if model.state.visualizer {
+            Picker("Стиль", selection: $model.state.visualizerStyle) {
+                ForEach(VisualizerStyle.allCases) { Text($0.name).tag($0) }
+            }
+            .pickerStyle(.segmented)
         }
     }
 }

@@ -51,6 +51,9 @@ struct StoredState: Codable, Equatable {
     var hotkeyOverlay = false
     /// In per-key mode, light the media keys (F7–F12 by default) white while music plays.
     var mediaKeysGlow = true
+    /// Equaliser bars on the keyboard while the Mac plays sound.
+    var visualizer = false
+    var visualizerStyle = VisualizerStyle.pulse
 
     init() {}
     // Tolerate state saved by older versions (missing keys fall back to defaults).
@@ -70,6 +73,8 @@ struct StoredState: Codable, Equatable {
         badgeApps = try c.decodeIfPresent([BadgeApp].self, forKey: .badgeApps) ?? d.badgeApps
         hotkeyOverlay = try c.decodeIfPresent(Bool.self, forKey: .hotkeyOverlay) ?? d.hotkeyOverlay
         mediaKeysGlow = try c.decodeIfPresent(Bool.self, forKey: .mediaKeysGlow) ?? d.mediaKeysGlow
+        visualizer = try c.decodeIfPresent(Bool.self, forKey: .visualizer) ?? d.visualizer
+        visualizerStyle = try c.decodeIfPresent(VisualizerStyle.self, forKey: .visualizerStyle) ?? d.visualizerStyle
     }
 }
 
@@ -95,6 +100,7 @@ final class AppModel: ObservableObject {
             }
             if lightingChanged && !ledOverride { scheduleApply() }
             if state.hotkeyOverlay != oldValue.hotkeyOverlay { updateHotkeyWatch() }
+            if state.visualizer != oldValue.visualizer { updateVisualizer() }
         }
     }
     @Published private(set) var connected = false
@@ -139,6 +145,21 @@ final class AppModel: ObservableObject {
 
     /// System Now Playing state, checked every second.
     @Published private(set) var music: NowPlaying.State = .none
+
+    /// Visualizer: audio tap (macOS 14.2+), analyzer, frame timer; `visualizerShowing` = bars on screen now.
+    private var audioTap: AnyObject?
+    private var analyzer = SpectrumAnalyzer(bands: VisualizerFrame.columns)
+    private var visualizerTimer: Timer?
+    private var visualizerShowing = false
+    private var lastSound = Date.distantPast
+    /// A frame takes ~45 ms to send (9 reports × ~5 ms), so frames go out on their own queue,
+    /// one at a time, always the newest: ~20 fps without blocking the UI.
+    private let frameQueue = DispatchQueue(label: "local.hatorrgb.frames", qos: .userInteractive)
+    private var frameBusy = false
+    private var lastFrame: [RGB] = []
+    private var lastFrameSent = Date.distantPast
+    private let pulse = PulseStyle()
+    static var visualizerSupported: Bool { if #available(macOS 14.2, *) { true } else { false } }
 
     /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
     static let claudeApps: Set<String> = [
@@ -204,6 +225,7 @@ final class AppModel: ObservableObject {
             }
         }
         updateHotkeyWatch()
+        updateVisualizer()
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { _ in try? KeyRemapper.clear() } // on quit, hand the keys back to System Settings' config
@@ -332,7 +354,7 @@ final class AppModel: ObservableObject {
     }
 
     func applyNow() {
-        guard connected, overlayShown == nil else { return }
+        guard connected, overlayShown == nil, !visualizerShowing else { return }
         if !alertColors.isEmpty { startAlertAnimation(); return }
         stopAlertAnimation()
         do {
@@ -343,6 +365,95 @@ final class AppModel: ObservableObject {
             lastError = nil
         } catch {
             lastError = "\(error)"
+        }
+    }
+
+    // MARK: Visualizer
+
+    private func updateVisualizer() {
+        guard #available(macOS 14.2, *) else { return }
+        if state.visualizer, audioTap == nil {
+            let tap = SystemAudioTap()
+            do {
+                try tap.start()
+            } catch {
+                lastError = "\(error)"
+                return
+            }
+            audioTap = tap
+            visualizerTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.visualizerTick() }
+            }
+        } else if !state.visualizer, let tap = audioTap as? SystemAudioTap {
+            tap.stop()
+            audioTap = nil
+            visualizerTimer?.invalidate()
+            visualizerTimer = nil
+            if visualizerShowing { visualizerShowing = false; restoreAfterFrames() }
+        }
+    }
+
+    /// Hands the LEDs back once any frame still being sent has finished.
+    private func restoreAfterFrames() {
+        lastFrame = []
+        frameQueue.async {
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated { if !self.ledOverride { self.applyNow() } }
+            }
+        }
+    }
+
+    private func visualizerTick() {
+        guard #available(macOS 14.2, *), let tap = audioTap as? SystemAudioTap else { return }
+        // Alerts and the hotkey overlay take priority.
+        guard connected, !ledOverride, overlayShown == nil, alertColors.isEmpty else {
+            lastFrame = []
+            if visualizerShowing { visualizerShowing = false; restoreAfterFrames() }
+            return
+        }
+        guard !frameBusy else { return }
+        let heights = analyzer.heights(tap.latest(2048), sampleRate: tap.sampleRate)
+        if heights != nil { lastSound = Date() }
+        // Keep the bars through short pauses; hand back the normal lighting after 1.5 s of silence.
+        guard Date().timeIntervalSince(lastSound) < 1.5 else {
+            if visualizerShowing { visualizerShowing = false; restoreAfterFrames() }
+            return
+        }
+        visualizerShowing = true
+        let device = self.device
+        switch state.visualizerStyle {
+        case .pulse:
+            // One static-colour report per frame (~40 fps).
+            var s = EffectSettings()
+            s.effect = .staticColor
+            s.brightness = 4
+            s.rainbow = false
+            s.foreground = pulse.color(heights)
+            lastFrame = []
+            frameBusy = true
+            frameQueue.async {
+                try? device.apply(s)
+                DispatchQueue.main.async { MainActor.assumeIsolated { self.frameBusy = false } }
+            }
+        case .bars:
+            // Per-key frames are slow on this firmware: whole cells, at most ~15 fps, changed messages only.
+            guard Date().timeIntervalSince(lastFrameSent) >= 0.066 else { return }
+            let frame = VisualizerFrame.render(heights ?? Array(repeating: 0, count: VisualizerFrame.columns),
+                                               layout: state.layout)
+            guard frame != lastFrame else { return }
+            let previous = lastFrame
+            lastFrame = frame
+            lastFrameSent = Date()
+            frameBusy = true
+            frameQueue.async {
+                // First frame switches to per-key mode; after that only changed messages are sent.
+                if previous.count == frame.count {
+                    try? device.updatePerKey(frame, from: previous)
+                } else {
+                    try? device.applyPerKey(frame, brightness: 4)
+                }
+                DispatchQueue.main.async { MainActor.assumeIsolated { self.frameBusy = false } }
+            }
         }
     }
 
@@ -480,6 +591,8 @@ final class AppModel: ObservableObject {
     private func hideOverlay() {
         guard overlayShown != nil else { return }
         overlayShown = nil
+        visualizerShowing = false
+        lastFrame = []
         HotkeyLegend.shared.hide()
         applyNow()
     }

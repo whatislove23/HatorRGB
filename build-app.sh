@@ -35,6 +35,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>LSMinimumSystemVersion</key><string>13.0</string>
     <key>LSUIElement</key><true/>
     <key>NSHighResolutionCapable</key><true/>
+    <key>NSAudioCaptureUsageDescription</key><string>HatorRGB shows a music visualizer on the keyboard.</string>
 </dict>
 </plist>
 PLIST

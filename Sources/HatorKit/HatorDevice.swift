@@ -70,6 +70,12 @@ public final class HatorDevice {
         try send(Packets.effect(settings, zone: zone))
     }
 
+    /// Rewrites only the per-key messages whose colours changed since `previous`, without touching the
+    /// mode. Keys in untouched messages aren't rewritten, so they don't flicker. Use after `applyPerKey`.
+    public func updatePerKey(_ colors: [RGB], from previous: [RGB]) throws {
+        for (new, old) in zip(Packets.perKey(colors), Packets.perKey(previous)) where new != old { try send(new) }
+    }
+
     /// Writes 132 per-key colours and switches the keyboard into custom (per-key) mode.
     public func applyPerKey(_ colors: [RGB], brightness: UInt8 = 4) throws {
         for p in Packets.perKey(colors) { try send(p) }
