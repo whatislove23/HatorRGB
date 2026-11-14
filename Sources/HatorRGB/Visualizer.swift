@@ -124,6 +124,8 @@ final class SpectrumAnalyzer {
     private let window: [Float]
     private var smoothed: [Float]
     private var peak: Float = 1e-3
+    /// Unsmoothed kick-range energy of the last analysed block — for beat detection.
+    private(set) var lowEnergy: Float = 0
 
     init(bands: Int) {
         self.bands = bands
@@ -164,6 +166,9 @@ final class SpectrumAnalyzer {
         }
         // Auto gain: follow the loudest band, decaying slowly.
         peak = max(raw.max() ?? 0, peak * 0.995, 1e-3)
+        // Kick-drum range energy (40–150 Hz), unsmoothed.
+        let k0 = max(1, Int(40 / binHz)), k1 = max(k0 + 1, Int(150 / binHz))
+        lowEnergy = mags[k0..<min(k1, mags.count)].reduce(0) { $0 + $1 * $1 }
         for b in 0..<bands {
             let v = min(1, sqrt(raw[b] / peak))
             smoothed[b] = v > smoothed[b] ? v : smoothed[b] * 0.82 + v * 0.18 // fast up, slow down
@@ -173,9 +178,76 @@ final class SpectrumAnalyzer {
 }
 
 enum VisualizerStyle: String, Codable, CaseIterable, Identifiable {
-    case pulse, bars
+    case pulse, bars, beat
     var id: String { rawValue }
-    var name: String { self == .pulse ? "Пульс" : "Стовпчики" }
+    /// Unknown (removed) styles fall back to pulse instead of failing the whole saved state.
+    init(from decoder: Decoder) throws {
+        self = VisualizerStyle(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .pulse
+    }
+    var name: String {
+        switch self {
+        case .pulse: "Пульс"
+        case .bars: "Стовпчики"
+        case .beat: "Біт"
+        }
+    }
+}
+
+/// Changes the whole keyboard to the next colour on every beat (kick), then lets it fade a little
+/// until the next one.
+final class BeatStyle {
+    static let palette: [RGB] = [
+        RGB(255, 0, 40), RGB(255, 0, 200), RGB(130, 0, 255), RGB(0, 60, 255),
+        RGB(0, 220, 255), RGB(0, 255, 80), RGB(255, 220, 0), RGB(255, 100, 0),
+    ]
+    let detector = BeatDetector()
+    private var lastBeat = Date.distantPast
+    private var index = 0
+
+    /// Call every analysis tick (~30/s). Returns the current colour, already faded.
+    func color(lowEnergy e: Float) -> RGB {
+        if detector.feed(e) {
+            lastBeat = Date()
+            index = (index + 1) % Self.palette.count
+        }
+        let t = Float(Date().timeIntervalSince(lastBeat))
+        let k = max(0.3, 1 - t * 1.6)
+        let col = Self.palette[index]
+        return RGB(UInt8(Float(col.r) * k), UInt8(Float(col.g) * k), UInt8(Float(col.b) * k))
+    }
+}
+
+/// Onset detector on kick-range energy: a beat is a sudden rise in log-energy (spectral flux) that
+/// stands out from the rises of the last ~1.5 s. Fed ~30 times per second.
+final class BeatDetector {
+    private var previousLog: Float?
+    private var flux: [Float] = []
+    private var ticksSinceBeat = 100
+    /// Minimum ticks between beats (~0.2 s at 30/s).
+    var refractory = 6
+
+    func feed(_ energy: Float) -> Bool {
+        ticksSinceBeat += 1
+        let l = log(energy + 1e-7)
+        defer { previousLog = l }
+        guard let prev = previousLog else { return false }
+        let d = max(0, l - prev)
+        let mean = flux.isEmpty ? 0 : flux.reduce(0, +) / Float(flux.count)
+        let sd = flux.isEmpty ? 0 : sqrt(flux.reduce(0) { $0 + ($1 - mean) * ($1 - mean) } / Float(flux.count))
+        flux.append(d)
+        if flux.count > 45 { flux.removeFirst() }
+        guard flux.count > 15, energy > 1e-5, ticksSinceBeat >= refractory,
+              d > max(0.35, mean + 1.4 * sd) else { return false }
+        ticksSinceBeat = 0
+        return true
+    }
+}
+
+func hsv(_ h: Float, _ s: Float, _ v: Float) -> RGB {
+    let i = Int(h * 6) % 6, f = h * 6 - Float(Int(h * 6))
+    let p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s)
+    let (r, g, b): (Float, Float, Float) = [(v, t, p), (q, v, p), (p, v, t), (p, q, v), (t, p, v), (v, p, q)][i]
+    return RGB(UInt8(r * 255), UInt8(g * 255), UInt8(b * 255))
 }
 
 /// Whole-keyboard pulse: brightness follows the bass, colour follows where the energy is
@@ -194,16 +266,10 @@ final class PulseStyle {
             hue = hue * 0.93 + min(0.8, centroid * 1.4) * 0.07
         }
         let k = max(0.06, pow(level, 1.5))
-        let c = hsv(h: hue, s: 1, v: k)
+        let c = hsv(hue, 1, k)
         return c
     }
 
-    private func hsv(h: Float, s: Float, v: Float) -> RGB {
-        let i = Int(h * 6) % 6, f = h * 6 - Float(Int(h * 6))
-        let p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s)
-        let (r, g, b): (Float, Float, Float) = [(v, t, p), (q, v, p), (p, v, t), (p, q, v), (t, p, v), (v, p, q)][i]
-        return RGB(UInt8(r * 255), UInt8(g * 255), UInt8(b * 255))
-    }
 }
 
 enum VisualizerFrame {

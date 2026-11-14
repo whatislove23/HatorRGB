@@ -28,7 +28,7 @@ the vendor only ships Windows software, so this one was built by reverse-enginee
 - **App notifications**: when Telegram (or Slack, Mail) gets new unread messages, the keyboard pulses in that app's colour. It reads the Dock badge, so no permissions are needed, and it stops when you open the app. Muted chats don't count. If several alerts are active at once, including Claude, their colours take turns, one per breath.
 - **Hotkey overlay**: hold ⌘, ⌥ or ⌃ and the keys that have a shortcut in the frontmost app light up, coloured by menu (File, Edit, View…). An on-screen legend shows what each key does. Shortcuts are read from the app's menu bar, so this needs the Accessibility permission. It's off by default.
 - **Media keys glow** (per-key mode): while a player is open, the media F-keys turn white and play/pause turns green when playing or red when paused. This uses the system Now Playing state.
-- **Music visualizer** (macOS 14.2+): reacts to whatever the Mac is playing. **Pulse** flashes the whole keyboard on the bass and shifts its colour with the music. **Bars** draws an equaliser across the keys. Needs the "System Audio Recording" permission and hands the lighting back after a moment of silence.
+- **Music visualizer** (macOS 14.2+): reacts to whatever the Mac is playing. **Pulse** flashes the whole keyboard on the bass and shifts its colour with the music. **Bars** draws an equaliser across the keys. **Beat** switches to the next colour on every kick drum. Needs the "System Audio Recording" permission and hands the lighting back after a moment of silence.
 - **Snake on the keyboard**: every lit key is a pixel and the arrow keys steer.
 - Settings persist and lighting is restored after you reconnect the keyboard. Optional launch at login.
 
@@ -124,7 +124,7 @@ Based on [Daniel Gibson's notes on the Pulsar PCMK TKL](https://gist.github.com/
 - **Сповіщення з програм**: нові повідомлення в Telegram (або Slack, Пошті) підсвічують клаву кольором програми. Сигнал зникає, щойно відкриваєш програму. Якщо сигналів кілька, кольори чергуються.
 - **Підсвітка гарячих клавіш**: затисни ⌘, ⌥ або ⌃, і світяться клавіші зі скороченнями поточної програми, кольором відповідного меню. На екрані з'являється підказка, що робить кожна клавіша. Потрібен дозвіл «Доступність».
 - **Медіаклавіші** (у режимі «Поклавішно»): поки відкритий плеєр, медіаклавіші білі, а play/pause зелена, коли грає, і червона на паузі.
-- **Візуалізатор музики** (macOS 14.2+): «Пульс», коли вся клава спалахує на баси, або «Стовпчики», коли по клавішах біжить еквалайзер. Потрібен дозвіл на запис системного звуку.
+- **Візуалізатор музики** (macOS 14.2+): «Пульс», коли вся клава спалахує на баси, «Стовпчики», коли по клавішах біжить еквалайзер, або «Біт», коли на кожну бочку змінюється колір. Потрібен дозвіл на запис системного звуку.
 - **Змійка просто на підсвітці клавіатури**, керування стрілками.
 
 **Встановлення:** завантаж zip із [Releases](https://github.com/whatislove23/HatorRGB/releases) і перенеси `HatorRGB.app` у «Програми». Застосунок не нотаризований, тому першого разу відкривай через **правий клік → Відкрити**. Якщо macOS однаково блокує, виконай команду `xattr -dr com.apple.quarantine /Applications/HatorRGB.app`.

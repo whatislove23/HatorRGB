@@ -161,6 +161,7 @@ final class AppModel: ObservableObject {
     private var lastFrameSent = Date.distantPast
     private let pulse = PulseStyle()
     private var lastPulse = RGB.black
+    private let beat = BeatStyle()
     static var visualizerSupported: Bool { if #available(macOS 14.2, *) { true } else { false } }
 
     /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
@@ -414,21 +415,24 @@ final class AppModel: ObservableObject {
             if visualizerShowing { visualizerShowing = false; restoreAfterFrames() }
             return
         }
-        guard !frameBusy else { return }
+        // Analyse every tick (even while a frame is being sent) so no beat is missed.
         let heights = analyzer.heights(tap.latest(2048), sampleRate: tap.sampleRate)
         if heights != nil { lastSound = Date() }
+        let beatColor = beat.color(lowEnergy: heights == nil ? 0 : analyzer.lowEnergy)
+        let pulseColor = pulse.color(heights)
         // Keep the bars through short pauses; hand back the normal lighting after 1.5 s of silence.
         guard Date().timeIntervalSince(lastSound) < 1.5 else {
             if visualizerShowing { visualizerShowing = false; restoreAfterFrames() }
             return
         }
         visualizerShowing = true
+        guard !frameBusy else { return }
         let device = self.device
         switch state.visualizerStyle {
-        case .pulse:
+        case .pulse, .beat:
             // One static-colour report per frame. The keyboard's controller also scans the keys, so
             // LED traffic is capped (~20 reports/s, only real changes) or typing starts to drop keys.
-            let color = pulse.color(heights)
+            let color = state.visualizerStyle == .beat ? beatColor : pulseColor
             guard Date().timeIntervalSince(lastFrameSent) >= 0.05,
                   max(abs(Int(color.r) - Int(lastPulse.r)), abs(Int(color.g) - Int(lastPulse.g)),
                       abs(Int(color.b) - Int(lastPulse.b))) > 4 else { return }
