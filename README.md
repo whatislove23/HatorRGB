@@ -26,6 +26,7 @@ the vendor only ships Windows software, so this one was built by reverse-enginee
 - **Win ↔ Alt toggle**: puts ⌘ next to the space bar. Your other System Settings modifier-key settings are kept.
 - **Claude Code alert**: the keyboard softly pulses orange while a Claude Code session waits for your reply or approval. It stops when you answer, or when you come back to Claude or a terminal and touch the keyboard or mouse.
 - **App notifications**: when Telegram (or Slack, Mail) gets new unread messages, the keyboard pulses in that app's colour. It reads the Dock badge, so no permissions are needed, and it stops when you open the app. Muted chats don't count. If several alerts are active at once, including Claude, their colours take turns, one per breath.
+- **Hotkey overlay**: hold ⌘, ⌥ or ⌃ and the keys that have a shortcut in the frontmost app light up, coloured by menu (File, Edit, View…). An on-screen legend shows what each key does. Shortcuts are read from the app's menu bar, so this needs the Accessibility permission. It's off by default.
 - **Snake on the keyboard**: every lit key is a pixel and the arrow keys steer.
 - Settings persist and lighting is restored after you reconnect the keyboard. Optional launch at login.
 
@@ -81,6 +82,7 @@ $H slot 17            # light a single LED slot (for mapping)
 
 - If you use **Karabiner-Elements**, turn off "Modify events" for the HATOR keyboard in Karabiner → Devices. Otherwise Karabiner bypasses the remapping.
 - Changes made with the keyboard's own Fn shortcuts happen inside the firmware and are invisible to the Mac, so after an alert the app restores the lighting set in its menu.
+- The release build is ad-hoc signed, so after updating the app macOS may keep a stale Accessibility entry. If the hotkey overlay stops working, remove HatorRGB in System Settings → Privacy & Security → Accessibility and turn the feature on again. When building from source, `SIGN_ID="Apple Development: …" ./build-app.sh` keeps the permission across rebuilds.
 - Key remapping only lasts while the app is running. On quit, your System Settings modifier configuration is restored.
 
 ## Protocol
@@ -116,6 +118,7 @@ Based on [Daniel Gibson's notes on the Pulsar PCMK TKL](https://gist.github.com/
 - **Перемикач Win ↔ Alt**: ⌘ біля пробілу, як на Mac.
 - **Сигнал від Claude Code**: клавіатура плавно блимає помаранчевим, коли Claude чекає на твою відповідь або апрув. Налаштування хуків описано вище.
 - **Сповіщення з програм**: нові повідомлення в Telegram (або Slack, Пошті) підсвічують клаву кольором програми. Сигнал зникає, щойно відкриваєш програму. Якщо сигналів кілька, кольори чергуються.
+- **Підсвітка гарячих клавіш**: затисни ⌘, ⌥ або ⌃, і світяться клавіші зі скороченнями поточної програми, кольором відповідного меню. На екрані з'являється підказка, що робить кожна клавіша. Потрібен дозвіл «Доступність».
 - **Змійка просто на підсвітці клавіатури**, керування стрілками.
 
 **Встановлення:** завантаж zip із [Releases](https://github.com/whatislove23/HatorRGB/releases) і перенеси `HatorRGB.app` у «Програми». Застосунок не нотаризований, тому першого разу відкривай через **правий клік → Відкрити**. Якщо macOS однаково блокує, виконай команду `xattr -dr com.apple.quarantine /Applications/HatorRGB.app`.

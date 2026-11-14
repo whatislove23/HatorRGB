@@ -2,6 +2,9 @@ import SwiftUI
 import AppKit
 import ServiceManagement
 import HatorKit
+import os
+
+let hotkeyLog = Logger(subsystem: "local.hatorrgb", category: "hotkeys")
 
 enum LightMode: String, Codable { case effect, perKey }
 
@@ -44,6 +47,8 @@ struct StoredState: Codable, Equatable {
     var claudeAlert = true
     /// Apps whose new unread messages pulse the keyboard in their colour.
     var badgeApps = BadgeApp.defaults
+    /// Hold ⌘/⌥/⌃ to light the keys that have shortcuts in the frontmost app.
+    var hotkeyOverlay = false
 
     init() {}
     // Tolerate state saved by older versions (missing keys fall back to defaults).
@@ -61,6 +66,7 @@ struct StoredState: Codable, Equatable {
         swapWinAlt = try c.decodeIfPresent(Bool.self, forKey: .swapWinAlt) ?? d.swapWinAlt
         claudeAlert = try c.decodeIfPresent(Bool.self, forKey: .claudeAlert) ?? d.claudeAlert
         badgeApps = try c.decodeIfPresent([BadgeApp].self, forKey: .badgeApps) ?? d.badgeApps
+        hotkeyOverlay = try c.decodeIfPresent(Bool.self, forKey: .hotkeyOverlay) ?? d.hotkeyOverlay
     }
 }
 
@@ -83,6 +89,7 @@ final class AppModel: ObservableObject {
                 badgeAck = badgeAck.filter { on.contains($0.key) }
             }
             if lightingChanged && !ledOverride { scheduleApply() }
+            if state.hotkeyOverlay != oldValue.hotkeyOverlay { updateHotkeyWatch() }
         }
     }
     @Published private(set) var connected = false
@@ -114,6 +121,16 @@ final class AppModel: ObservableObject {
     private var animStart = Date()
     private var animCycle = -1
     private var animColorIndex = 0
+
+    /// Hotkey overlay: Accessibility permission granted (refreshed every second).
+    @Published private(set) var axTrusted = MenuShortcutReader.isTrusted
+    private var hotkeyTimer: Timer?
+    private var heldMods: Mods = []
+    private var heldSince = Date()
+    /// Modifiers the overlay currently shows; nil = overlay off.
+    private var overlayShown: Mods?
+    private var shortcutCache: [pid_t: (read: Date, items: [MenuShortcut])] = [:]
+    private var readingPids: Set<pid_t> = []
 
     /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
     static let claudeApps: Set<String> = [
@@ -161,8 +178,23 @@ final class AppModel: ObservableObject {
             MainActor.assumeIsolated {
                 self?.pollBadges()
                 self?.checkUserBack()
+                if let self, self.axTrusted != MenuShortcutReader.isTrusted {
+                    self.axTrusted.toggle()
+                    self.updateHotkeyWatch()
+                }
             }
         }
+        // Pre-read the menu shortcuts of whichever app comes to the front.
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let pid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
+            MainActor.assumeIsolated {
+                guard let self, let pid, self.hotkeyTimer != nil else { return }
+                self.readShortcuts(pid: pid)
+            }
+        }
+        updateHotkeyWatch()
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { _ in try? KeyRemapper.clear() } // on quit, hand the keys back to System Settings' config
@@ -291,7 +323,7 @@ final class AppModel: ObservableObject {
     }
 
     func applyNow() {
-        guard connected else { return }
+        guard connected, overlayShown == nil else { return }
         if !alertColors.isEmpty { startAlertAnimation(); return }
         stopAlertAnimation()
         do {
@@ -328,7 +360,7 @@ final class AppModel: ObservableObject {
 
     private func animationTick() {
         let colors = alertColors
-        guard connected, !ledOverride, !colors.isEmpty else { return }
+        guard connected, !ledOverride, overlayShown == nil, !colors.isEmpty else { return }
         let t = Date().timeIntervalSince(animStart)
         let cycle = Int(t / Self.breathPeriod)
         if cycle != animCycle {
@@ -345,6 +377,78 @@ final class AppModel: ObservableObject {
         s.foreground = RGB(ch(c.r), ch(c.g), ch(c.b))
         s.rainbow = false
         try? device.apply(s)
+    }
+
+    // MARK: Hotkey overlay
+
+    func enableHotkeyOverlay(_ on: Bool) {
+        if on && !MenuShortcutReader.isTrusted { MenuShortcutReader.requestAccess() }
+        state.hotkeyOverlay = on
+    }
+
+    /// Polls the modifier state (20×/s, no permission needed) while the feature is on and allowed.
+    private func updateHotkeyWatch() {
+        let want = state.hotkeyOverlay && axTrusted
+        if want, hotkeyTimer == nil {
+            hotkeyTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.hotkeyTick() }
+            }
+            if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier { readShortcuts(pid: pid) }
+        } else if !want, let t = hotkeyTimer {
+            t.invalidate()
+            hotkeyTimer = nil
+            hideOverlay()
+        }
+    }
+
+    private func hotkeyTick() {
+        let held = Mods(CGEventSource.flagsState(.combinedSessionState))
+        guard held.isChord, connected, !ledOverride,
+              let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
+            heldMods = []
+            hideOverlay()
+            return
+        }
+        if held != heldMods {
+            heldMods = held
+            heldSince = Date()
+            if shortcutCache[pid].map({ Date().timeIntervalSince($0.read) > 5 }) ?? true { readShortcuts(pid: pid) }
+        }
+        // Short delay so ordinary ⌘C / ⌘V don't flash the keyboard.
+        guard Date().timeIntervalSince(heldSince) >= 0.35, overlayShown != held,
+              let items = shortcutCache[pid]?.items else { return }
+        overlayShown = held
+        hotkeyLog.debug("overlay mods=\(held.rawValue, privacy: .public) items=\(items.count, privacy: .public)")
+        let frame = HotkeyOverlay.frame(items, held: held, layout: state.layout, swapWinAlt: state.swapWinAlt)
+        try? device.applyPerKey(frame, brightness: 4)
+        HotkeyLegend.shared.show(items, held: held)
+    }
+
+    private func hideOverlay() {
+        guard overlayShown != nil else { return }
+        overlayShown = nil
+        HotkeyLegend.shared.hide()
+        applyNow()
+    }
+
+    private func readShortcuts(pid: pid_t) {
+        guard !readingPids.contains(pid) else { return }
+        readingPids.insert(pid)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let items = MenuShortcutReader.read(pid: pid)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.readingPids.remove(pid)
+                    hotkeyLog.debug("read \(items.count, privacy: .public) shortcuts from pid \(pid, privacy: .public)")
+                    self.shortcutCache[pid] = (Date(), items)
+                    // Drop apps that have quit.
+                    let alive = Set(NSWorkspace.shared.runningApplications.map(\.processIdentifier))
+                    self.shortcutCache = self.shortcutCache.filter { alive.contains($0.key) }
+                    if self.overlayShown != nil { self.overlayShown = []; self.hotkeyTick() } // redraw with fresh data
+                }
+            }
+        }
     }
 
     /// Lights a single LED slot white (all others off) — used by calibration.

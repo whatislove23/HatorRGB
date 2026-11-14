@@ -64,6 +64,7 @@ struct MenuView: View {
             Divider()
             ClaudeAlertControls()
             BadgeAlertControls()
+            HotkeyOverlayControls()
 
             Divider()
             FKeyControls()
@@ -275,6 +276,30 @@ struct BadgeAlertControls: View {
                             model.state.badgeApps[i].color = c
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+struct HotkeyOverlayControls: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(isOn: Binding(get: { model.state.hotkeyOverlay }, set: { model.enableHotkeyOverlay($0) })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Підсвітка гарячих клавіш")
+                    Text("Затисни ⌘, ⌥ або ⌃: світяться клавіші зі скороченнями поточної програми")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch).controlSize(.small)
+            if model.state.hotkeyOverlay && !model.axTrusted {
+                HStack {
+                    Text("Потрібен дозвіл «Доступність»").font(.caption).foregroundStyle(.orange)
+                    Spacer()
+                    Button("Відкрити") { MenuShortcutReader.openSettings() }.controlSize(.small)
                 }
             }
         }

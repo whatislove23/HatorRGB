@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Builds HatorRGB.app (universal: Apple Silicon + Intel).
 #   --install   copy it to ~/Applications and launch it
+#   SIGN_ID=…   codesign identity (default: ad-hoc)
 #   --zip       also produce HatorRGB-<version>.zip for a GitHub release
 set -euo pipefail
 cd "${0:A:h}"
@@ -39,7 +40,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 PLIST
 
 sed -i '' "s/VERSION_PLACEHOLDER/$VERSION/" "$APP/Contents/Info.plist"
-codesign --force --deep --sign - "$APP"
+# SIGN_ID: a stable identity (e.g. "Apple Development: …") keeps macOS permissions across rebuilds;
+# ad-hoc ("-") changes identity on every build, so Accessibility has to be granted again.
+codesign --force --deep --sign "${SIGN_ID:--}" "$APP"
 echo "Built $PWD/$APP"
 
 if [[ " $* " == *" --zip "* ]]; then
