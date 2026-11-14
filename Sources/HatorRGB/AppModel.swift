@@ -11,6 +11,24 @@ struct Preset: Codable, Identifiable, Hashable {
     var colors: [RGB]
 }
 
+/// An app whose Dock badge (unread counter) lights up the keyboard.
+struct BadgeApp: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var bundleIDs: [String]
+    var color: RGB
+    var enabled: Bool
+
+    static let defaults = [
+        BadgeApp(id: "telegram", name: "Telegram", bundleIDs: ["ru.keepcoder.Telegram", "org.telegram.desktop"],
+                 color: RGB(0, 136, 255), enabled: true),
+        BadgeApp(id: "slack", name: "Slack", bundleIDs: ["com.tinyspeck.slackmacgap"],
+                 color: RGB(224, 30, 90), enabled: false),
+        BadgeApp(id: "mail", name: "Пошта", bundleIDs: ["com.apple.mail"],
+                 color: RGB(60, 220, 120), enabled: false),
+    ]
+}
+
 struct StoredState: Codable, Equatable {
     var mode: LightMode = .effect
     var effect = EffectSettings()
@@ -24,6 +42,8 @@ struct StoredState: Codable, Equatable {
     var swapWinAlt = KeyRemapper.systemSwapsWinAlt()
     /// Pulse the keyboard orange while a Claude Code session waits for the user.
     var claudeAlert = true
+    /// Apps whose new unread messages pulse the keyboard in their colour.
+    var badgeApps = BadgeApp.defaults
 
     init() {}
     // Tolerate state saved by older versions (missing keys fall back to defaults).
@@ -40,6 +60,7 @@ struct StoredState: Codable, Equatable {
         fKeys = try c.decodeIfPresent(FKeyMapping.self, forKey: .fKeys) ?? d.fKeys
         swapWinAlt = try c.decodeIfPresent(Bool.self, forKey: .swapWinAlt) ?? d.swapWinAlt
         claudeAlert = try c.decodeIfPresent(Bool.self, forKey: .claudeAlert) ?? d.claudeAlert
+        badgeApps = try c.decodeIfPresent([BadgeApp].self, forKey: .badgeApps) ?? d.badgeApps
     }
 }
 
@@ -55,7 +76,12 @@ final class AppModel: ObservableObject {
             }
             let lightingChanged = state.mode != oldValue.mode || state.effect != oldValue.effect
                 || state.perKey != oldValue.perKey || state.perKeyBrightness != oldValue.perKeyBrightness
-                || state.claudeAlert != oldValue.claudeAlert
+                || state.claudeAlert != oldValue.claudeAlert || state.badgeApps != oldValue.badgeApps
+            if state.badgeApps != oldValue.badgeApps {
+                let on = Set(state.badgeApps.filter(\.enabled).map(\.id))
+                badgeAlerts = badgeAlerts.filter { on.contains($0.key) }
+                badgeAck = badgeAck.filter { on.contains($0.key) }
+            }
             if lightingChanged && !ledOverride { scheduleApply() }
         }
     }
@@ -68,6 +94,26 @@ final class AppModel: ObservableObject {
     var claudeAlertActive: Bool { state.claudeAlert && !claudeWaiting.isEmpty }
     private static let claudeStaleAfter: TimeInterval = 2 * 60 * 60
     private var focusWatch: Timer?
+
+    /// Badge apps with unread messages you haven't looked at yet (app id → since when).
+    @Published private(set) var badgeAlerts: [String: Date] = [:]
+    /// Current badge count per app id (0 = none or not running).
+    @Published private(set) var badgeCounts: [String: Int] = [:]
+    /// Count already seen per app; only a higher count raises the alert again.
+    private var badgeAck: [String: Int] = [:]
+    private var badgePolling = false
+
+    /// Colours to pulse, in turn: Claude first, then badge apps in menu order.
+    var alertColors: [RGB] {
+        var colors: [RGB] = claudeAlertActive ? [Self.claudeColor] : []
+        colors += state.badgeApps.filter { $0.enabled && badgeAlerts[$0.id] != nil }.map(\.color)
+        return colors
+    }
+    static let claudeColor = RGB(255, 90, 0)
+    private var animTimer: Timer?
+    private var animStart = Date()
+    private var animCycle = -1
+    private var animColorIndex = 0
 
     /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
     static let claudeApps: Set<String> = [
@@ -106,8 +152,15 @@ final class AppModel: ObservableObject {
                 guard let self else { return }
                 let fresh = self.claudeWaiting.filter { Date().timeIntervalSince($0.value) < Self.claudeStaleAfter }
                 if fresh.count != self.claudeWaiting.count {
-                    self.claudeWaiting = fresh; self.updateFocusWatch(); self.refreshLighting()
+                    self.claudeWaiting = fresh; self.refreshLighting()
                 }
+            }
+        }
+        // Once a second: read Dock badges and check whether you've come back to an alerting app.
+        focusWatch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.pollBadges()
+                self?.checkUserBack()
             }
         }
         NotificationCenter.default.addObserver(
@@ -154,42 +207,82 @@ final class AppModel: ObservableObject {
     }
 
     private func claudeSignal(session: String, waiting: Bool) {
-        let wasActive = claudeAlertActive
+        let before = alertColors
         if waiting { claudeWaiting[session] = claudeWaiting[session] ?? Date() } else { claudeWaiting[session] = nil }
-        if claudeAlertActive != wasActive { refreshLighting() }
-        updateFocusWatch()
+        if alertColors != before { refreshLighting() }
     }
 
-    /// While a session waits, check once a second whether you're back with Claude: a Claude/terminal
-    /// app is frontmost and you've pressed a key or used the mouse since the signal started.
-    /// Uses the system idle counter, so no Input Monitoring permission is needed.
-    private func updateFocusWatch() {
-        if claudeWaiting.isEmpty {
-            focusWatch?.invalidate()
-            focusWatch = nil
-        } else if focusWatch == nil {
-            focusWatch = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.checkUserBackWithClaude() }
+    /// Reads the Dock badges of enabled apps off the main thread.
+    private func pollBadges() {
+        let apps = state.badgeApps.filter(\.enabled)
+        guard !apps.isEmpty, !badgePolling else {
+            if apps.isEmpty && !badgeCounts.isEmpty { badgeCounts = [:] }
+            return
+        }
+        let running = NSWorkspace.shared.runningApplications
+        let targets: [(String, pid_t)] = apps.compactMap { app in
+            running.first { app.bundleIDs.contains($0.bundleIdentifier ?? "") }.map { (app.id, $0.processIdentifier) }
+        }
+        badgePolling = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            var counts: [String: Int] = [:]
+            for (id, pid) in targets { counts[id] = BadgeReader.count(pid: pid) ?? 0 }
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    self?.badgePolling = false
+                    self?.badgesRead(counts, apps: apps.map(\.id))
+                }
             }
         }
     }
 
-    private func checkUserBackWithClaude() {
-        guard let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
-              Self.claudeApps.contains(front) else { return }
+    private func badgesRead(_ counts: [String: Int], apps: [String]) {
+        let before = alertColors
+        for id in apps {
+            let count = counts[id] ?? 0
+            guard let ack = badgeAck[id] else { badgeAck[id] = count; continue } // unread from before launch: no alert
+            if count == 0 {
+                badgeAlerts[id] = nil
+                badgeAck[id] = 0
+            } else if count < ack {
+                badgeAck[id] = count
+            } else if count > ack, badgeAlerts[id] == nil {
+                badgeAlerts[id] = Date()
+            }
+        }
+        if counts != badgeCounts { badgeCounts = counts }
+        if alertColors != before { refreshLighting() }
+    }
+
+    /// You're back with an alerting app when it's frontmost and you've pressed a key or used the mouse
+    /// since the alert started. Uses the system idle counter, so no Input Monitoring permission is needed.
+    private func checkUserBack() {
+        guard !claudeWaiting.isEmpty || !badgeAlerts.isEmpty,
+              let front = NSWorkspace.shared.frontmostApplication?.bundleIdentifier else { return }
         let anyInput = CGEventType(rawValue: ~0)!
         let idle = CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: anyInput)
         let lastInput = Date().addingTimeInterval(-idle)
-        let seen = claudeWaiting.filter { $0.value < lastInput }
-        guard !seen.isEmpty else { return }
-        for key in seen.keys { claudeWaiting[key] = nil }
-        if !claudeAlertActive { refreshLighting() }
-        updateFocusWatch()
+        let before = alertColors
+        if Self.claudeApps.contains(front) {
+            for (key, since) in claudeWaiting where since < lastInput { claudeWaiting[key] = nil }
+        }
+        for app in state.badgeApps where app.bundleIDs.contains(front) {
+            if let since = badgeAlerts[app.id], since < lastInput {
+                badgeAlerts[app.id] = nil
+                badgeAck[app.id] = badgeCounts[app.id] ?? 0
+            }
+        }
+        if alertColors != before { refreshLighting() }
     }
 
     func clearClaudeAlert() {
         claudeWaiting = [:]
-        updateFocusWatch()
+        refreshLighting()
+    }
+
+    func clearBadgeAlerts() {
+        for id in badgeAlerts.keys { badgeAck[id] = badgeCounts[id] ?? 0 }
+        badgeAlerts = [:]
         refreshLighting()
     }
 
@@ -197,26 +290,11 @@ final class AppModel: ObservableObject {
         if !ledOverride { applyNow() }
     }
 
-    /// Soft orange pulse using the keyboard's own breathe effect (smooth, no CPU).
-    static let claudePulse: EffectSettings = {
-        var s = EffectSettings()
-        s.effect = .breathe
-        s.foreground = RGB(255, 90, 0)
-        s.background = .black
-        s.brightness = 4
-        s.speed = 1
-        s.rainbow = false
-        return s
-    }()
-
     func applyNow() {
         guard connected else { return }
+        if !alertColors.isEmpty { startAlertAnimation(); return }
+        stopAlertAnimation()
         do {
-            if claudeAlertActive {
-                try device.apply(Self.claudePulse)
-                lastError = nil
-                return
-            }
             switch state.mode {
             case .effect: try device.apply(state.effect)
             case .perKey: try device.applyPerKey(state.perKey, brightness: state.perKeyBrightness)
@@ -225,6 +303,48 @@ final class AppModel: ObservableObject {
         } catch {
             lastError = "\(error)"
         }
+    }
+
+    // MARK: Alert pulse
+
+    /// One breath (dark → full → dark) per colour; colours take turns, one per breath.
+    private static let breathPeriod: TimeInterval = 2.4
+
+    /// Drives the pulse from the Mac (static colour frames at 40 fps) so each breath can use a different colour.
+    private func startAlertAnimation() {
+        guard animTimer == nil else { return }
+        animStart = Date()
+        animCycle = -1
+        animColorIndex = 0
+        animTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 40, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.animationTick() }
+        }
+    }
+
+    private func stopAlertAnimation() {
+        animTimer?.invalidate()
+        animTimer = nil
+    }
+
+    private func animationTick() {
+        let colors = alertColors
+        guard connected, !ledOverride, !colors.isEmpty else { return }
+        let t = Date().timeIntervalSince(animStart)
+        let cycle = Int(t / Self.breathPeriod)
+        if cycle != animCycle {
+            if animCycle >= 0 { animColorIndex += 1 }
+            animCycle = cycle
+        }
+        let c = colors[animColorIndex % colors.count]
+        let phase = t.truncatingRemainder(dividingBy: Self.breathPeriod) / Self.breathPeriod
+        let k = pow(sin(phase * .pi), 2)
+        func ch(_ v: UInt8) -> UInt8 { UInt8((Double(v) * k).rounded()) }
+        var s = EffectSettings()
+        s.effect = .staticColor
+        s.brightness = 4
+        s.foreground = RGB(ch(c.r), ch(c.g), ch(c.b))
+        s.rainbow = false
+        try? device.apply(s)
     }
 
     /// Lights a single LED slot white (all others off) — used by calibration.

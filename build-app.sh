@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "${0:A:h}"
 
-VERSION=1.0.0
+VERSION=1.1.0
 ARCHS=(--arch arm64 --arch x86_64)
 swift build -c release "${ARCHS[@]}" --product HatorRGB
 swift build -c release "${ARCHS[@]}" --product hator

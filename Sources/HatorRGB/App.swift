@@ -63,6 +63,7 @@ struct MenuView: View {
 
             Divider()
             ClaudeAlertControls()
+            BadgeAlertControls()
 
             Divider()
             FKeyControls()
@@ -241,6 +242,42 @@ struct ClaudeAlertControls: View {
             if !model.claudeWaiting.isEmpty {
                 Spacer()
                 Button("Зняти") { model.clearClaudeAlert() }.controlSize(.small)
+            }
+        }
+    }
+}
+
+/// Apps whose new unread messages (Dock badge) pulse the keyboard in their colour.
+/// Several at once take turns, one colour per breath.
+struct BadgeAlertControls: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Сповіщення з програм")
+                    Text("Блимає кольором програми, коли приходять нові повідомлення")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                if !model.badgeAlerts.isEmpty {
+                    Spacer()
+                    Button("Зняти") { model.clearBadgeAlerts() }.controlSize(.small)
+                }
+            }
+            ForEach($model.state.badgeApps) { $app in
+                HStack(spacing: 8) {
+                    Toggle(app.name, isOn: $app.enabled).toggleStyle(.checkbox)
+                    Spacer()
+                    if let n = model.badgeCounts[app.id], n > 0, app.enabled {
+                        Text("\(n)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(model.badgeAlerts[app.id] != nil ? app.color.color : Color.secondary)
+                    }
+                    ColorPicker("", selection: Binding(get: { app.color.color }, set: { app.color = RGB($0) }),
+                                supportsOpacity: false)
+                        .labelsHidden()
+                }
             }
         }
     }

@@ -25,6 +25,7 @@ the vendor only ships Windows software, so this one was built by reverse-enginee
 - **F1–F12 as Mac media keys**: brightness, Mission Control, Spotlight, Launchpad, sleep, music and volume. Every key is configurable. Remapping happens at the HID driver level (`hidutil`) and affects only the HATOR keyboard; no Accessibility permission is needed.
 - **Win ↔ Alt toggle**: puts ⌘ next to the space bar. Your other System Settings modifier-key settings are kept.
 - **Claude Code alert**: the keyboard softly pulses orange while a Claude Code session waits for your reply or approval. It stops when you answer, or when you come back to Claude or a terminal and touch the keyboard or mouse.
+- **App notifications**: when Telegram (or Slack, Mail) gets new unread messages, the keyboard pulses in that app's colour. It reads the Dock badge, so no permissions are needed, and it stops when you open the app. Muted chats don't count. If several alerts are active at once, including Claude, their colours take turns, one per breath.
 - **Snake on the keyboard**: every lit key is a pixel and the arrow keys steer.
 - Settings persist and lighting is restored after you reconnect the keyboard. Optional launch at login.
 
@@ -79,6 +80,7 @@ $H slot 17            # light a single LED slot (for mapping)
 ## Notes
 
 - If you use **Karabiner-Elements**, turn off "Modify events" for the HATOR keyboard in Karabiner → Devices. Otherwise Karabiner bypasses the remapping.
+- Changes made with the keyboard's own Fn shortcuts happen inside the firmware and are invisible to the Mac, so after an alert the app restores the lighting set in its menu.
 - Key remapping only lasts while the app is running. On quit, your System Settings modifier configuration is restored.
 
 ## Protocol
@@ -113,6 +115,7 @@ Based on [Daniel Gibson's notes on the Pulsar PCMK TKL](https://gist.github.com/
 - **F1–F12 як медіаклавіші Mac**: яскравість, Spotlight, сон, музика, гучність. Працює лише для HATOR, дозволи не потрібні.
 - **Перемикач Win ↔ Alt**: ⌘ біля пробілу, як на Mac.
 - **Сигнал від Claude Code**: клавіатура плавно блимає помаранчевим, коли Claude чекає на твою відповідь або апрув. Налаштування хуків описано вище.
+- **Сповіщення з програм**: нові повідомлення в Telegram (або Slack, Пошті) підсвічують клаву кольором програми. Сигнал зникає, щойно відкриваєш програму. Якщо сигналів кілька, кольори чергуються.
 - **Змійка просто на підсвітці клавіатури**, керування стрілками.
 
 **Встановлення:** завантаж zip із [Releases](https://github.com/whatislove23/HatorRGB/releases) і перенеси `HatorRGB.app` у «Програми». Застосунок не нотаризований, тому першого разу відкривай через **правий клік → Відкрити**. Якщо macOS однаково блокує, виконай команду `xattr -dr com.apple.quarantine /Applications/HatorRGB.app`.
