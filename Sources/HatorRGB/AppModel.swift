@@ -49,6 +49,8 @@ struct StoredState: Codable, Equatable {
     var badgeApps = BadgeApp.defaults
     /// Hold ⌘/⌥/⌃ to light the keys that have shortcuts in the frontmost app.
     var hotkeyOverlay = false
+    /// In per-key mode, light the media keys (F7–F12 by default) white while music plays.
+    var mediaKeysGlow = true
 
     init() {}
     // Tolerate state saved by older versions (missing keys fall back to defaults).
@@ -67,6 +69,7 @@ struct StoredState: Codable, Equatable {
         claudeAlert = try c.decodeIfPresent(Bool.self, forKey: .claudeAlert) ?? d.claudeAlert
         badgeApps = try c.decodeIfPresent([BadgeApp].self, forKey: .badgeApps) ?? d.badgeApps
         hotkeyOverlay = try c.decodeIfPresent(Bool.self, forKey: .hotkeyOverlay) ?? d.hotkeyOverlay
+        mediaKeysGlow = try c.decodeIfPresent(Bool.self, forKey: .mediaKeysGlow) ?? d.mediaKeysGlow
     }
 }
 
@@ -83,6 +86,8 @@ final class AppModel: ObservableObject {
             let lightingChanged = state.mode != oldValue.mode || state.effect != oldValue.effect
                 || state.perKey != oldValue.perKey || state.perKeyBrightness != oldValue.perKeyBrightness
                 || state.claudeAlert != oldValue.claudeAlert || state.badgeApps != oldValue.badgeApps
+                || state.mediaKeysGlow != oldValue.mediaKeysGlow || state.fKeys != oldValue.fKeys
+                || state.remapEnabled != oldValue.remapEnabled
             if state.badgeApps != oldValue.badgeApps {
                 let on = Set(state.badgeApps.filter(\.enabled).map(\.id))
                 badgeAlerts = badgeAlerts.filter { on.contains($0.key) }
@@ -132,6 +137,9 @@ final class AppModel: ObservableObject {
     private var shortcutCache: [pid_t: (read: Date, items: [MenuShortcut])] = [:]
     private var readingPids: Set<pid_t> = []
 
+    /// System Now Playing state, checked every second.
+    @Published private(set) var music: NowPlaying.State = .none
+
     /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
     static let claudeApps: Set<String> = [
         "com.anthropic.claudefordesktop",
@@ -178,6 +186,7 @@ final class AppModel: ObservableObject {
             MainActor.assumeIsolated {
                 self?.pollBadges()
                 self?.checkUserBack()
+                self?.checkMusic()
                 if let self, self.axTrusted != MenuShortcutReader.isTrusted {
                     self.axTrusted.toggle()
                     self.updateHotkeyWatch()
@@ -329,11 +338,54 @@ final class AppModel: ObservableObject {
         do {
             switch state.mode {
             case .effect: try device.apply(state.effect)
-            case .perKey: try device.applyPerKey(state.perKey, brightness: state.perKeyBrightness)
+            case .perKey: try device.applyPerKey(perKeyFrame, brightness: state.perKeyBrightness)
             }
             lastError = nil
         } catch {
             lastError = "\(error)"
+        }
+    }
+
+    // MARK: Media keys
+
+    private static let mediaActions: Set<KeyAction> = [.previousTrack, .playPause, .nextTrack, .mute, .volumeDown, .volumeUp]
+
+    /// LED slots of the F-keys mapped to playback / volume, with the action of each.
+    private var mediaSlots: [(slot: Int, action: KeyAction)] {
+        guard state.remapEnabled else { return [] }
+        var byLabel: [String: KeyAction] = [:]
+        for (i, a) in state.fKeys.actions.enumerated() where Self.mediaActions.contains(a) { byLabel["F\(i + 1)"] = a }
+        return state.layout.labels.enumerated().compactMap { i, label in
+            label.flatMap { byLabel[$0] }.map { (i, $0) }
+        }
+    }
+
+    /// While a player is open (per-key mode): media keys white, play/pause green (playing) or red (paused).
+    private var mediaKeyColors: [(slot: Int, color: RGB)] {
+        guard state.mode == .perKey, state.mediaKeysGlow, music != .none else { return [] }
+        return mediaSlots.map { slot, action in
+            (slot, action == .playPause ? (music == .playing ? RGB(0, 255, 0) : RGB(255, 0, 0)) : .white)
+        }
+    }
+
+    /// The per-key colours to send: the user's, with the media keys on top.
+    private var perKeyFrame: [RGB] {
+        var colors = state.perKey
+        for (slot, color) in mediaKeyColors where colors.indices.contains(slot) { colors[slot] = color }
+        return colors
+    }
+
+    private func checkMusic() {
+        guard state.mediaKeysGlow, state.mode == .perKey else {
+            if music != .none { music = .none }
+            return
+        }
+        NowPlaying.check { [weak self] now in
+            MainActor.assumeIsolated {
+                guard let self, now != self.music else { return }
+                self.music = now
+                self.refreshLighting()
+            }
         }
     }
 
@@ -371,10 +423,11 @@ final class AppModel: ObservableObject {
         let phase = t.truncatingRemainder(dividingBy: Self.breathPeriod) / Self.breathPeriod
         let k = pow(sin(phase * .pi), 2)
         func ch(_ v: UInt8) -> UInt8 { UInt8((Double(v) * k).rounded()) }
+        let pulse = RGB(ch(c.r), ch(c.g), ch(c.b))
         var s = EffectSettings()
         s.effect = .staticColor
         s.brightness = 4
-        s.foreground = RGB(ch(c.r), ch(c.g), ch(c.b))
+        s.foreground = pulse
         s.rainbow = false
         try? device.apply(s)
     }

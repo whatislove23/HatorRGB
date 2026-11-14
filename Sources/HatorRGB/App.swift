@@ -165,6 +165,9 @@ struct PerKeyControls: View {
                     set: { model.state.perKeyBrightness = UInt8($0.rounded()) }), in: 0...4, step: 1)
             }
 
+            Toggle("Медіаклавіші: білі, ▶︎ зелена / ⏸ червона", isOn: $model.state.mediaKeysGlow)
+                .toggleStyle(.checkbox)
+
             if !model.state.presets.isEmpty {
                 Text("Пресети").font(.caption).foregroundStyle(.secondary)
                 ForEach(model.state.presets) { p in
