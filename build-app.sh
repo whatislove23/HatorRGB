@@ -54,6 +54,7 @@ fi
 if [[ " $* " == *" --install "* ]]; then
     mkdir -p ~/Applications
     pkill -x HatorRGB 2>/dev/null || true
+    while pgrep -x HatorRGB >/dev/null; do sleep 0.1; done # open fails (-600) while it is still quitting
     rm -rf ~/Applications/$APP
     cp -R "$APP" ~/Applications/
     open ~/Applications/$APP

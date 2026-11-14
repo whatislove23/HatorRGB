@@ -43,3 +43,4 @@ public enum NowPlaying {
         return running != 0
     }
 }
+

@@ -132,6 +132,7 @@ final class AppModel: ObservableObject {
     private var animStart = Date()
     private var animCycle = -1
     private var animColorIndex = 0
+    private var lastAnimColor = RGB.black
 
     /// Hotkey overlay: Accessibility permission granted (refreshed every second).
     @Published private(set) var axTrusted = MenuShortcutReader.isTrusted
@@ -159,6 +160,7 @@ final class AppModel: ObservableObject {
     private var lastFrame: [RGB] = []
     private var lastFrameSent = Date.distantPast
     private let pulse = PulseStyle()
+    private var lastPulse = RGB.black
     static var visualizerSupported: Bool { if #available(macOS 14.2, *) { true } else { false } }
 
     /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
@@ -381,7 +383,7 @@ final class AppModel: ObservableObject {
                 return
             }
             audioTap = tap
-            visualizerTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            visualizerTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.visualizerTick() }
             }
         } else if !state.visualizer, let tap = audioTap as? SystemAudioTap {
@@ -396,6 +398,7 @@ final class AppModel: ObservableObject {
     /// Hands the LEDs back once any frame still being sent has finished.
     private func restoreAfterFrames() {
         lastFrame = []
+        lastPulse = .black
         frameQueue.async {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { if !self.ledOverride { self.applyNow() } }
@@ -423,12 +426,19 @@ final class AppModel: ObservableObject {
         let device = self.device
         switch state.visualizerStyle {
         case .pulse:
-            // One static-colour report per frame (~40 fps).
+            // One static-colour report per frame. The keyboard's controller also scans the keys, so
+            // LED traffic is capped (~20 reports/s, only real changes) or typing starts to drop keys.
+            let color = pulse.color(heights)
+            guard Date().timeIntervalSince(lastFrameSent) >= 0.05,
+                  max(abs(Int(color.r) - Int(lastPulse.r)), abs(Int(color.g) - Int(lastPulse.g)),
+                      abs(Int(color.b) - Int(lastPulse.b))) > 4 else { return }
+            lastPulse = color
+            lastFrameSent = Date()
             var s = EffectSettings()
             s.effect = .staticColor
             s.brightness = 4
             s.rainbow = false
-            s.foreground = pulse.color(heights)
+            s.foreground = color
             lastFrame = []
             frameBusy = true
             frameQueue.async {
@@ -436,8 +446,9 @@ final class AppModel: ObservableObject {
                 DispatchQueue.main.async { MainActor.assumeIsolated { self.frameBusy = false } }
             }
         case .bars:
-            // Per-key frames are slow on this firmware: whole cells, at most ~15 fps, changed messages only.
-            guard Date().timeIntervalSince(lastFrameSent) >= 0.066 else { return }
+            // Per-key frames are slow on this firmware and busy the controller that also scans the keys:
+            // whole cells, at most ~10 fps, changed messages only.
+            guard Date().timeIntervalSince(lastFrameSent) >= 0.1 else { return }
             let frame = VisualizerFrame.render(heights ?? Array(repeating: 0, count: VisualizerFrame.columns),
                                                layout: state.layout)
             guard frame != lastFrame else { return }
@@ -509,9 +520,10 @@ final class AppModel: ObservableObject {
     private func startAlertAnimation() {
         guard animTimer == nil else { return }
         animStart = Date()
+        lastAnimColor = RGB(1, 1, 1)
         animCycle = -1
         animColorIndex = 0
-        animTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 40, repeats: true) { [weak self] _ in
+        animTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.animationTick() }
         }
     }
@@ -540,6 +552,8 @@ final class AppModel: ObservableObject {
         s.brightness = 4
         s.foreground = pulse
         s.rainbow = false
+        guard pulse != lastAnimColor else { return }
+        lastAnimColor = pulse
         try? device.apply(s)
     }
 
