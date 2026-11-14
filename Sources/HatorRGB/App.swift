@@ -107,10 +107,10 @@ struct EffectControls: View {
             GridRow {
                 Text("Колір")
                 HStack {
-                    ColorPicker("", selection: color(\.foreground), supportsOpacity: false).labelsHidden()
+                    RGBWell(color: settings.foreground) { [settings = $settings] in settings.wrappedValue.foreground = $0 }
                     if settings.effect.usesBackground {
                         Text("Фон").foregroundStyle(.secondary)
-                        ColorPicker("", selection: color(\.background), supportsOpacity: false).labelsHidden()
+                        RGBWell(color: settings.background) { [settings = $settings] in settings.wrappedValue.background = $0 }
                     }
                     Spacer()
                     if settings.effect != .staticColor {
@@ -138,10 +138,6 @@ struct EffectControls: View {
                 }
             }
         }
-    }
-
-    private func color(_ kp: WritableKeyPath<EffectSettings, RGB>) -> Binding<Color> {
-        Binding(get: { settings[keyPath: kp].color }, set: { settings[keyPath: kp] = RGB($0) })
     }
 
     private func level(_ kp: WritableKeyPath<EffectSettings, UInt8>) -> Binding<Double> {
@@ -274,9 +270,11 @@ struct BadgeAlertControls: View {
                             .font(.caption.monospacedDigit())
                             .foregroundStyle(model.badgeAlerts[app.id] != nil ? app.color.color : Color.secondary)
                     }
-                    ColorPicker("", selection: Binding(get: { app.color.color }, set: { app.color = RGB($0) }),
-                                supportsOpacity: false)
-                        .labelsHidden()
+                    RGBWell(color: app.color) { [model, id = app.id] c in
+                        if let i = model.state.badgeApps.firstIndex(where: { $0.id == id }) {
+                            model.state.badgeApps[i].color = c
+                        }
+                    }
                 }
             }
         }
