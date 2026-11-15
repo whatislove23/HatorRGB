@@ -166,6 +166,7 @@ final class AppModel: ObservableObject {
     private let pulse = PulseStyle()
     private var lastPulse = RGB.black
     private let beat = BeatStyle()
+    private let sine = SineStyle()
     static var visualizerSupported: Bool { if #available(macOS 14.2, *) { true } else { false } }
 
     /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
@@ -514,12 +515,14 @@ final class AppModel: ObservableObject {
                 try? device.apply(s)
                 DispatchQueue.main.async { MainActor.assumeIsolated { self.frameBusy = false } }
             }
-        case .bars:
+        case .bars, .sine:
             // Per-key frames are slow on this firmware and busy the controller that also scans the keys:
             // whole cells, at most ~10 fps, changed messages only.
-            guard Date().timeIntervalSince(lastFrameSent) >= 0.1 else { return }
-            let frame = VisualizerFrame.render(heights ?? Array(repeating: 0, count: VisualizerFrame.columns),
-                                               layout: state.layout)
+            guard Date().timeIntervalSince(lastFrameSent) >= (state.visualizerStyle == .sine ? 0.125 : 0.1) else { return }
+            let frame = state.visualizerStyle == .sine
+                ? sine.frame(heights, layout: state.layout)
+                : VisualizerFrame.render(heights ?? Array(repeating: 0, count: VisualizerFrame.columns),
+                                         layout: state.layout)
             guard frame != lastFrame else { return }
             let previous = lastFrame
             lastFrame = frame

@@ -178,7 +178,7 @@ final class SpectrumAnalyzer {
 }
 
 enum VisualizerStyle: String, Codable, CaseIterable, Identifiable {
-    case pulse, bars, beat
+    case pulse, bars, beat, sine
     var id: String { rawValue }
     /// Unknown (removed) styles fall back to pulse instead of failing the whole saved state.
     init(from decoder: Decoder) throws {
@@ -189,6 +189,7 @@ enum VisualizerStyle: String, Codable, CaseIterable, Identifiable {
         case .pulse: "Пульс"
         case .bars: "Стовпчики"
         case .beat: "Біт"
+        case .sine: "Синусоїда"
         }
     }
 }
@@ -270,6 +271,50 @@ final class PulseStyle {
         return c
     }
 
+}
+
+/// A sine line running across the keys: louder music = taller wave, bass pushes it along faster.
+final class SineStyle {
+    private var phase = 0.0
+    private var amp: Float = 0
+    private var last = Date()
+
+    func frame(_ heights: [Float]?, layout: KeyLayout) -> [RGB] {
+        let now = Date()
+        let dt = min(0.2, now.timeIntervalSince(last))
+        last = now
+        let h = heights ?? []
+        let bass = h.prefix(4).max() ?? 0
+        let treble = h.suffix(6).max() ?? 0
+        // Height follows the bass hits: jumps up on a kick, sinks back between them.
+        let target = pow(bass, 2.2)
+        amp += (target - amp) * (target > amp ? 0.85 : 0.25)
+        // Busy highs (hi-hats) push the wave along faster.
+        phase += dt * (1.5 + Double(treble) * 7)
+
+        var frame = Array(repeating: RGB.black, count: HatorProtocol.slotCount)
+        let rows = HatorProtocol.rows
+        let mid = Double(rows - 1) / 2
+        let swing = mid * Double(max(0.08, min(1, amp)))
+        func row(_ col: Int) -> Int {
+            let y = mid - swing * sin(Double(col) / Double(VisualizerFrame.columns) * 3 * .pi - phase)
+            return max(0, min(rows - 1, Int(y.rounded())))
+        }
+        var prev = row(0)
+        for col in 0..<VisualizerFrame.columns {
+            let r = row(col)
+            let color = hsv(Float(col) / Float(VisualizerFrame.columns) * 0.8, 1, 1)
+            // Fill vertical gaps between neighbours so the line stays connected.
+            let lo = col == 0 ? r : min(r, prev + (r > prev ? 1 : 0))
+            let hi = col == 0 ? r : max(r, prev - (r < prev ? 1 : 0))
+            for y in lo...hi {
+                let slot = KeyLayout.slot(row: y, column: col)
+                if layout.labels[slot] != nil { frame[slot] = color }
+            }
+            prev = r
+        }
+        return frame
+    }
 }
 
 enum VisualizerFrame {
