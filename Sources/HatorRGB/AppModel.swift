@@ -54,6 +54,8 @@ struct StoredState: Codable, Equatable {
     /// Equaliser bars on the keyboard while the Mac plays sound.
     var visualizer = false
     var visualizerStyle = VisualizerStyle.pulse
+    /// Turn the lighting off while the Mac sleeps, the display is off or the screen is locked.
+    var darkWhenAway = true
 
     init() {}
     // Tolerate state saved by older versions (missing keys fall back to defaults).
@@ -75,6 +77,7 @@ struct StoredState: Codable, Equatable {
         mediaKeysGlow = try c.decodeIfPresent(Bool.self, forKey: .mediaKeysGlow) ?? d.mediaKeysGlow
         visualizer = try c.decodeIfPresent(Bool.self, forKey: .visualizer) ?? d.visualizer
         visualizerStyle = try c.decodeIfPresent(VisualizerStyle.self, forKey: .visualizerStyle) ?? d.visualizerStyle
+        darkWhenAway = try c.decodeIfPresent(Bool.self, forKey: .darkWhenAway) ?? d.darkWhenAway
     }
 }
 
@@ -101,6 +104,7 @@ final class AppModel: ObservableObject {
             if lightingChanged && !ledOverride { scheduleApply() }
             if state.hotkeyOverlay != oldValue.hotkeyOverlay { updateHotkeyWatch() }
             if state.visualizer != oldValue.visualizer { updateVisualizer() }
+            if state.darkWhenAway != oldValue.darkWhenAway { awayChanged() }
         }
     }
     @Published private(set) var connected = false
@@ -172,6 +176,10 @@ final class AppModel: ObservableObject {
         "com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.exafunction.windsurf",
     ]
 
+    /// Why the Mac is "away": sleeping, display off, screen locked. Lighting goes dark while any is set.
+    private var awayReasons: Set<String> = []
+    private var isDark: Bool { state.darkWhenAway && !awayReasons.isEmpty }
+
     private let device = HatorDevice()
     private var pending: Task<Void, Never>?
     private static let defaultsKey = "state.v1"
@@ -229,6 +237,7 @@ final class AppModel: ObservableObject {
         }
         updateHotkeyWatch()
         updateVisualizer()
+        watchAway()
         NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { _ in try? KeyRemapper.clear() } // on quit, hand the keys back to System Settings' config
@@ -252,7 +261,7 @@ final class AppModel: ObservableObject {
         pending = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 400_000_000)
             guard !Task.isCancelled, let self, !self.ledOverride else { return }
-            self.applyNow()
+            if self.isDark { self.awayChanged() } else { self.applyNow() }
         }
     }
 
@@ -357,7 +366,7 @@ final class AppModel: ObservableObject {
     }
 
     func applyNow() {
-        guard connected, overlayShown == nil, !visualizerShowing else { return }
+        guard connected, !isDark, overlayShown == nil, !visualizerShowing else { return }
         if !alertColors.isEmpty { startAlertAnimation(); return }
         stopAlertAnimation()
         do {
@@ -368,6 +377,62 @@ final class AppModel: ObservableObject {
             lastError = nil
         } catch {
             lastError = "\(error)"
+        }
+    }
+
+    // MARK: Sleep / lock
+
+    private func watchAway() {
+        let ws = NSWorkspace.shared.notificationCenter
+        let pairs: [(Notification.Name, Notification.Name, String)] = [
+            (NSWorkspace.willSleepNotification, NSWorkspace.didWakeNotification, "sleep"),
+            (NSWorkspace.screensDidSleepNotification, NSWorkspace.screensDidWakeNotification, "display"),
+            (NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.sessionDidBecomeActiveNotification, "session"),
+        ]
+        for (off, on, reason) in pairs {
+            ws.addObserver(forName: off, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.setAway(reason, true) }
+            }
+            ws.addObserver(forName: on, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.setAway(reason, false) }
+            }
+        }
+        let dnc = DistributedNotificationCenter.default()
+        dnc.addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.setAway("lock", true) }
+        }
+        dnc.addObserver(forName: .init("com.apple.screenIsUnlocked"), object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.setAway("lock", false) }
+        }
+    }
+
+    private func setAway(_ reason: String, _ away: Bool) {
+        let wasDark = isDark
+        if away { awayReasons.insert(reason) } else { awayReasons.remove(reason) }
+        // Waking from sleep usually lands on the lock screen; that keeps it dark until unlock.
+        if !away && reason == "sleep" { awayReasons.remove("display") }
+        if isDark != wasDark { awayChanged() }
+    }
+
+    private func awayChanged() {
+        if isDark {
+            stopAlertAnimation()
+            if overlayShown != nil { overlayShown = nil; HotkeyLegend.shared.hide() }
+            visualizerShowing = false
+            lastFrame = []
+            lastPulse = .black
+            guard connected, !ledOverride else { return }
+            var s = EffectSettings()
+            s.effect = .staticColor
+            s.brightness = 0
+            s.rainbow = false
+            s.foreground = .black
+            s.background = .black
+            let device = self.device
+            frameQueue.async { try? device.apply(s) }
+        } else {
+            // After a frame still in flight, restore the normal lighting (the keyboard may also re-enumerate).
+            restoreAfterFrames()
         }
     }
 
@@ -410,7 +475,7 @@ final class AppModel: ObservableObject {
     private func visualizerTick() {
         guard #available(macOS 14.2, *), let tap = audioTap as? SystemAudioTap else { return }
         // Alerts and the hotkey overlay take priority.
-        guard connected, !ledOverride, overlayShown == nil, alertColors.isEmpty else {
+        guard connected, !isDark, !ledOverride, overlayShown == nil, alertColors.isEmpty else {
             lastFrame = []
             if visualizerShowing { visualizerShowing = false; restoreAfterFrames() }
             return
@@ -539,7 +604,7 @@ final class AppModel: ObservableObject {
 
     private func animationTick() {
         let colors = alertColors
-        guard connected, !ledOverride, overlayShown == nil, !colors.isEmpty else { return }
+        guard connected, !isDark, !ledOverride, overlayShown == nil, !colors.isEmpty else { return }
         let t = Date().timeIntervalSince(animStart)
         let cycle = Int(t / Self.breathPeriod)
         if cycle != animCycle {
@@ -585,7 +650,7 @@ final class AppModel: ObservableObject {
 
     private func hotkeyTick() {
         let held = Mods(CGEventSource.flagsState(.combinedSessionState))
-        guard held.isChord, connected, !ledOverride,
+        guard held.isChord, connected, !isDark, !ledOverride,
               let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
             heldMods = []
             hideOverlay()

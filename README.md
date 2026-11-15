@@ -29,6 +29,7 @@ the vendor only ships Windows software, so this one was built by reverse-enginee
 - **Hotkey overlay**: hold ⌘, ⌥ or ⌃ and the keys that have a shortcut in the frontmost app light up, coloured by menu (File, Edit, View…). An on-screen legend shows what each key does. Shortcuts are read from the app's menu bar, so this needs the Accessibility permission. It's off by default.
 - **Media keys glow** (per-key mode): while a player is open, the media F-keys turn white and play/pause turns green when playing or red when paused. This uses the system Now Playing state.
 - **Music visualizer** (macOS 14.2+): reacts to whatever the Mac is playing. **Pulse** flashes the whole keyboard on the bass and shifts its colour with the music. **Bars** draws an equaliser across the keys. **Beat** switches to the next colour on every kick drum. Needs the "System Audio Recording" permission and hands the lighting back after a moment of silence.
+- **Dark when away**: the lighting turns off while the Mac sleeps, the display is off or the screen is locked, and comes back when you unlock. It can be turned off in the menu.
 - **Snake on the keyboard**: every lit key is a pixel and the arrow keys steer.
 - Settings persist and lighting is restored after you reconnect the keyboard. Optional launch at login.
 
@@ -125,6 +126,7 @@ Based on [Daniel Gibson's notes on the Pulsar PCMK TKL](https://gist.github.com/
 - **Підсвітка гарячих клавіш**: затисни ⌘, ⌥ або ⌃, і світяться клавіші зі скороченнями поточної програми, кольором відповідного меню. На екрані з'являється підказка, що робить кожна клавіша. Потрібен дозвіл «Доступність».
 - **Медіаклавіші** (у режимі «Поклавішно»): поки відкритий плеєр, медіаклавіші білі, а play/pause зелена, коли грає, і червона на паузі.
 - **Візуалізатор музики** (macOS 14.2+): «Пульс», коли вся клава спалахує на баси, «Стовпчики», коли по клавішах біжить еквалайзер, або «Біт», коли на кожну бочку змінюється колір. Потрібен дозвіл на запис системного звуку.
+- **Гасне, коли тебе нема**: підсвітка вимикається, коли Mac спить, екран погас або заблокований, і повертається після розблокування.
 - **Змійка просто на підсвітці клавіатури**, керування стрілками.
 
 **Встановлення:** завантаж zip із [Releases](https://github.com/whatislove23/HatorRGB/releases) і перенеси `HatorRGB.app` у «Програми». Застосунок не нотаризований, тому першого разу відкривай через **правий клік → Відкрити**. Якщо macOS однаково блокує, виконай команду `xattr -dr com.apple.quarantine /Applications/HatorRGB.app`.

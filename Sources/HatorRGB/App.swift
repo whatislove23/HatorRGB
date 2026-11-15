@@ -75,6 +75,8 @@ struct MenuView: View {
             }
 
             Divider()
+            Toggle("Гасити, коли Mac спить або заблокований", isOn: $model.state.darkWhenAway)
+                .toggleStyle(.checkbox).font(.callout)
             HStack {
                 Toggle("Запускати при вході", isOn: Binding(
                     get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
