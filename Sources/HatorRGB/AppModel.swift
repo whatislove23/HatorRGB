@@ -54,6 +54,10 @@ struct StoredState: Codable, Equatable {
     /// Equaliser bars on the keyboard while the Mac plays sound.
     var visualizer = false
     var visualizerStyle = VisualizerStyle.bars
+    /// Cycle through all visualizer styles in turn.
+    var visualizerMix = false
+    /// Mix: seconds per style.
+    var visualizerMixSeconds: Double = 20
     /// Turn the lighting off while the Mac sleeps, the display is off or the screen is locked.
     var darkWhenAway = true
 
@@ -77,6 +81,8 @@ struct StoredState: Codable, Equatable {
         mediaKeysGlow = try c.decodeIfPresent(Bool.self, forKey: .mediaKeysGlow) ?? d.mediaKeysGlow
         visualizer = try c.decodeIfPresent(Bool.self, forKey: .visualizer) ?? d.visualizer
         visualizerStyle = try c.decodeIfPresent(VisualizerStyle.self, forKey: .visualizerStyle) ?? d.visualizerStyle
+        visualizerMix = try c.decodeIfPresent(Bool.self, forKey: .visualizerMix) ?? d.visualizerMix
+        visualizerMixSeconds = try c.decodeIfPresent(Double.self, forKey: .visualizerMixSeconds) ?? d.visualizerMixSeconds
         darkWhenAway = try c.decodeIfPresent(Bool.self, forKey: .darkWhenAway) ?? d.darkWhenAway
     }
 }
@@ -166,6 +172,9 @@ final class AppModel: ObservableObject {
     private var visual: GridVisual?
     private var visualStyle: VisualizerStyle?
     private var lastTick = Date()
+    /// Mix mode: the style showing now and since when.
+    private var mixIndex = 0
+    private var mixSince = Date()
     static var visualizerSupported: Bool { if #available(macOS 14.2, *) { true } else { false } }
 
     /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
@@ -480,7 +489,11 @@ final class AppModel: ObservableObject {
         }
         let heights = analyzer.heights(tap.latest(2048), sampleRate: tap.sampleRate)
         if heights != nil { lastSound = Date() }
-        let style = state.visualizerStyle
+        if state.visualizerMix, Date().timeIntervalSince(mixSince) >= state.visualizerMixSeconds {
+            mixIndex = (mixIndex + 1) % VisualizerStyle.allCases.count
+            mixSince = Date()
+        }
+        let style = state.visualizerMix ? VisualizerStyle.allCases[mixIndex] : state.visualizerStyle
         if visualStyle != style || visual == nil { visual = style.makeVisual(); visualStyle = style }
         let now = Date()
         visual?.update(heights, rms: heights == nil ? 0 : analyzer.rms, dt: min(0.2, now.timeIntervalSince(lastTick)))

@@ -328,10 +328,23 @@ struct VisualizerControls: View {
         .toggleStyle(.switch).controlSize(.small)
         .disabled(!AppModel.visualizerSupported)
         if model.state.visualizer {
-            Picker("Стиль", selection: $model.state.visualizerStyle) {
-                ForEach(VisualizerStyle.allCases) { Text($0.name).tag($0) }
+            HStack {
+                Picker("Стиль", selection: $model.state.visualizerStyle) {
+                    ForEach(VisualizerStyle.allCases) { Text($0.name).tag($0) }
+                }
+                .pickerStyle(.menu)
+                .disabled(model.state.visualizerMix)
+                Toggle("Mix", isOn: $model.state.visualizerMix)
+                    .toggleStyle(.checkbox)
+                    .help("Перемикати всі стилі по черзі")
             }
-            .pickerStyle(.segmented)
+            if model.state.visualizerMix {
+                HStack {
+                    Text("Кожні \(Int(model.state.visualizerMixSeconds)) с")
+                        .font(.caption).monospacedDigit().frame(width: 70, alignment: .leading)
+                    Slider(value: $model.state.visualizerMixSeconds, in: 5...120, step: 5)
+                }
+            }
         }
     }
 }
