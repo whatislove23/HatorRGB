@@ -58,6 +58,8 @@ struct StoredState: Codable, Equatable {
     var visualizerMix = false
     /// Mix: seconds per style.
     var visualizerMixSeconds: Double = 20
+    /// On a call (Meet, Zoom, Telegram, Slack): Esc red while the mic is live, green while muted.
+    var callMuteKey = true
     /// Turn the lighting off while the Mac sleeps, the display is off or the screen is locked.
     var darkWhenAway = true
 
@@ -83,6 +85,7 @@ struct StoredState: Codable, Equatable {
         visualizerStyle = try c.decodeIfPresent(VisualizerStyle.self, forKey: .visualizerStyle) ?? d.visualizerStyle
         visualizerMix = try c.decodeIfPresent(Bool.self, forKey: .visualizerMix) ?? d.visualizerMix
         visualizerMixSeconds = try c.decodeIfPresent(Double.self, forKey: .visualizerMixSeconds) ?? d.visualizerMixSeconds
+        callMuteKey = try c.decodeIfPresent(Bool.self, forKey: .callMuteKey) ?? d.callMuteKey
         darkWhenAway = try c.decodeIfPresent(Bool.self, forKey: .darkWhenAway) ?? d.darkWhenAway
     }
 }
@@ -101,7 +104,7 @@ final class AppModel: ObservableObject {
                 || state.perKey != oldValue.perKey || state.perKeyBrightness != oldValue.perKeyBrightness
                 || state.claudeAlert != oldValue.claudeAlert || state.badgeApps != oldValue.badgeApps
                 || state.mediaKeysGlow != oldValue.mediaKeysGlow || state.fKeys != oldValue.fKeys
-                || state.remapEnabled != oldValue.remapEnabled
+                || state.remapEnabled != oldValue.remapEnabled || state.callMuteKey != oldValue.callMuteKey
             if state.badgeApps != oldValue.badgeApps {
                 let on = Set(state.badgeApps.filter(\.enabled).map(\.id))
                 badgeAlerts = badgeAlerts.filter { on.contains($0.key) }
@@ -153,6 +156,10 @@ final class AppModel: ObservableObject {
     private var overlayShown: Mods?
     private var shortcutCache: [pid_t: (read: Date, items: [MenuShortcut])] = [:]
     private var readingPids: Set<pid_t> = []
+
+    /// Call state from the call apps (needs Accessibility), checked every second.
+    @Published private(set) var call: CallMonitor.State = .none
+    private var callScanning = false
 
     /// System Now Playing state, checked every second.
     @Published private(set) var music: NowPlaying.State = .none
@@ -228,6 +235,7 @@ final class AppModel: ObservableObject {
                 self?.pollBadges()
                 self?.checkUserBack()
                 self?.checkMusic()
+                self?.checkCall()
                 if let self, self.axTrusted != MenuShortcutReader.isTrusted {
                     self.axTrusted.toggle()
                     self.updateHotkeyWatch()
@@ -380,6 +388,11 @@ final class AppModel: ObservableObject {
         stopAlertAnimation()
         do {
             switch state.mode {
+            case .effect where callKeyColor != nil:
+                // Firmware effects can't light one key differently: show the effect colour still, plus Esc.
+                var colors = Array(repeating: state.effect.foreground, count: HatorProtocol.slotCount)
+                overlayCallKey(&colors)
+                try device.applyPerKey(colors, brightness: max(1, state.effect.brightness))
             case .effect: try device.apply(state.effect)
             case .perKey: try device.applyPerKey(perKeyFrame, brightness: state.perKeyBrightness)
             }
@@ -509,7 +522,8 @@ final class AppModel: ObservableObject {
         // Per-key frames are slow on this firmware and busy the controller that also scans the keys:
         // whole cells, at most ~8–10 fps, changed messages only.
         guard Date().timeIntervalSince(lastFrameSent) >= style.frameInterval,
-              let frame = visual?.frame(layout: state.layout) else { return }
+              var frame = visual?.frame(layout: state.layout) else { return }
+        overlayCallKey(&frame)
         guard frame != lastFrame else { return }
         let previous = lastFrame
         lastFrame = frame
@@ -552,7 +566,56 @@ final class AppModel: ObservableObject {
     private var perKeyFrame: [RGB] {
         var colors = state.perKey
         for (slot, color) in mediaKeyColors where colors.indices.contains(slot) { colors[slot] = color }
+        overlayCallKey(&colors)
         return colors
+    }
+
+    // MARK: Call mute key
+
+    private var escSlot: Int? { state.layout.labels.firstIndex { $0 == "Esc" } }
+
+    /// Esc colour while on a call: red = the mic is live, green = muted.
+    private var callKeyColor: RGB? {
+        switch call {
+        case .none: nil
+        case .live: RGB(255, 0, 0)
+        case .muted: RGB(0, 255, 0)
+        }
+    }
+
+    private func overlayCallKey(_ colors: inout [RGB]) {
+        guard let color = callKeyColor, let slot = escSlot, colors.indices.contains(slot) else { return }
+        colors[slot] = color
+    }
+
+    /// Scans the call apps only while the mic is in use (or a call is already showing, in case the app
+    /// releases the mic while muted).
+    private func checkCall() {
+        guard state.callMuteKey, axTrusted, !callScanning, CallMonitor.micInUse() || call != .none else {
+            if call != .none, !state.callMuteKey || !axTrusted { call = .none; callChanged() }
+            if call != .none, !callScanning, !CallMonitor.micInUse() { call = .none; callChanged() }
+            return
+        }
+        callScanning = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let now = CallMonitor.scan()
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.callScanning = false
+                    guard now != self.call else { return }
+                    callLog.debug("call state \(String(describing: now), privacy: .public)")
+                    self.call = now
+                    self.callChanged()
+                }
+            }
+        }
+    }
+
+    private func callChanged() {
+        lastFrame = [] // visualizer: resend the whole frame with the new Esc colour
+        if overlayShown != nil { overlayShown = []; hotkeyTick() }
+        refreshLighting()
     }
 
     private func checkMusic() {
@@ -655,7 +718,8 @@ final class AppModel: ObservableObject {
               let items = shortcutCache[pid]?.items else { return }
         overlayShown = held
         hotkeyLog.debug("overlay mods=\(held.rawValue, privacy: .public) items=\(items.count, privacy: .public)")
-        let frame = HotkeyOverlay.frame(items, held: held, layout: state.layout, swapWinAlt: state.swapWinAlt)
+        var frame = HotkeyOverlay.frame(items, held: held, layout: state.layout, swapWinAlt: state.swapWinAlt)
+        overlayCallKey(&frame)
         try? device.applyPerKey(frame, brightness: 4)
         HotkeyLegend.shared.show(items, held: held)
     }

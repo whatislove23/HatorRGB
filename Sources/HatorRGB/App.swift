@@ -65,6 +65,7 @@ struct MenuView: View {
             ClaudeAlertControls()
             BadgeAlertControls()
             HotkeyOverlayControls()
+            CallKeyControls()
             VisualizerControls()
 
             Divider()
@@ -308,6 +309,40 @@ struct HotkeyOverlayControls: View {
                     Button("Відкрити") { MenuShortcutReader.openSettings() }.controlSize(.small)
                 }
             }
+        }
+    }
+}
+
+struct CallKeyControls: View {
+    @EnvironmentObject var model: AppModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Toggle(isOn: Binding(get: { model.state.callMuteKey }, set: { on in
+                if on && !MenuShortcutReader.isTrusted { MenuShortcutReader.requestAccess() }
+                model.state.callMuteKey = on
+            })) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Мікрофон на дзвінку")
+                    Text(statusText).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.switch).controlSize(.small)
+            if model.state.callMuteKey && !model.axTrusted {
+                HStack {
+                    Text("Потрібен дозвіл «Доступність»").font(.caption).foregroundStyle(.orange)
+                    Spacer()
+                    Button("Відкрити") { MenuShortcutReader.openSettings() }.controlSize(.small)
+                }
+            }
+        }
+    }
+
+    private var statusText: String {
+        switch model.call {
+        case .none: "Esc червона, коли тебе чути, зелена на mute (Meet, Zoom, Telegram, Slack)"
+        case .live: "На дзвінку: мікрофон увімкнено"
+        case .muted: "На дзвінку: мікрофон вимкнено"
         }
     }
 }
