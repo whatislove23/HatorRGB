@@ -124,6 +124,8 @@ final class SpectrumAnalyzer {
     private let window: [Float]
     private var smoothed: [Float]
     private var peak: Float = 1e-3
+    /// Loudness (RMS) of the last analysed block.
+    private(set) var rms: Float = 0
 
     init(bands: Int) {
         self.bands = bands
@@ -135,7 +137,7 @@ final class SpectrumAnalyzer {
     /// Returns nil when it's (near) silent.
     func heights(_ samples: [Float], sampleRate: Double) -> [Float]? {
         guard samples.count == size else { return nil }
-        let rms = vDSP.rootMeanSquare(samples)
+        rms = vDSP.rootMeanSquare(samples)
         let x = vDSP.multiply(samples, window)
         var re = [Float](repeating: 0, count: size / 2), im = [Float](repeating: 0, count: size / 2)
         var mags = [Float](repeating: 0, count: size / 2)
@@ -172,21 +174,6 @@ final class SpectrumAnalyzer {
     }
 }
 
-enum VisualizerStyle: String, Codable, CaseIterable, Identifiable {
-    case bars, sine
-    var id: String { rawValue }
-    /// Unknown (removed) styles fall back to bars instead of failing the whole saved state.
-    init(from decoder: Decoder) throws {
-        self = VisualizerStyle(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .bars
-    }
-    var name: String {
-        switch self {
-        case .bars: "Стовпчики"
-        case .sine: "Синусоїда"
-        }
-    }
-}
-
 func hsv(_ h: Float, _ s: Float, _ v: Float) -> RGB {
     let i = Int(h * 6) % 6, f = h * 6 - Float(Int(h * 6))
     let p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s)
@@ -194,69 +181,7 @@ func hsv(_ h: Float, _ s: Float, _ v: Float) -> RGB {
     return RGB(UInt8(r * 255), UInt8(g * 255), UInt8(b * 255))
 }
 
-/// A sine line running across the keys: louder music = taller wave, bass pushes it along faster.
-final class SineStyle {
-    private var phase = 0.0
-    private var amp: Float = 0
-    private var last = Date()
-
-    func frame(_ heights: [Float]?, layout: KeyLayout) -> [RGB] {
-        let now = Date()
-        let dt = min(0.2, now.timeIntervalSince(last))
-        last = now
-        let h = heights ?? []
-        let bass = h.prefix(4).max() ?? 0
-        let treble = h.suffix(6).max() ?? 0
-        // Height follows the bass hits: jumps up on a kick, sinks back between them.
-        let target = pow(bass, 2.2)
-        amp += (target - amp) * (target > amp ? 0.85 : 0.25)
-        // Busy highs (hi-hats) push the wave along faster.
-        phase += dt * (1.5 + Double(treble) * 7)
-
-        var frame = Array(repeating: RGB.black, count: HatorProtocol.slotCount)
-        let rows = HatorProtocol.rows
-        let mid = Double(rows - 1) / 2
-        let swing = mid * Double(max(0.08, min(1, amp)))
-        func row(_ col: Int) -> Int {
-            let y = mid - swing * sin(Double(col) / Double(VisualizerFrame.columns) * 3 * .pi - phase)
-            return max(0, min(rows - 1, Int(y.rounded())))
-        }
-        var prev = row(0)
-        for col in 0..<VisualizerFrame.columns {
-            let r = row(col)
-            let color = hsv(Float(col) / Float(VisualizerFrame.columns) * 0.8, 1, 1)
-            // Fill vertical gaps between neighbours so the line stays connected.
-            let lo = col == 0 ? r : min(r, prev + (r > prev ? 1 : 0))
-            let hi = col == 0 ? r : max(r, prev - (r < prev ? 1 : 0))
-            for y in lo...hi {
-                let slot = KeyLayout.slot(row: y, column: col)
-                if layout.labels[slot] != nil { frame[slot] = color }
-            }
-            prev = r
-        }
-        return frame
-    }
-}
-
 enum VisualizerFrame {
     /// Columns 0…17 of the 6 × 22 matrix (main block + nav keys); row 5 is the bottom.
     static let columns = 18
-
-    /// Equaliser bars: green at the bottom, yellow in the middle, red on top. Whole cells only (no
-    /// half-bright keys): the firmware updates per-key colours slowly, so fewer changes look steadier.
-    static func render(_ heights: [Float], layout: KeyLayout) -> [RGB] {
-        var frame = Array(repeating: RGB.black, count: HatorProtocol.slotCount)
-        let rows = HatorProtocol.rows
-        let rowColors = [RGB(255, 0, 0), RGB(255, 90, 0), RGB(255, 200, 0), RGB(160, 255, 0), RGB(0, 255, 40), RGB(0, 255, 40)]
-        for col in 0..<min(columns, heights.count) {
-            let lit = Int((heights[col] * Float(rows)).rounded())
-            for k in 0..<min(lit, rows) { // k = 0 is the bottom row
-                let row = rows - 1 - k
-                let slot = KeyLayout.slot(row: row, column: col)
-                guard layout.labels[slot] != nil else { continue }
-                frame[slot] = rowColors[row]
-            }
-        }
-        return frame
-    }
 }

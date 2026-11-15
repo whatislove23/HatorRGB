@@ -163,7 +163,9 @@ final class AppModel: ObservableObject {
     private var frameBusy = false
     private var lastFrame: [RGB] = []
     private var lastFrameSent = Date.distantPast
-    private let sine = SineStyle()
+    private var visual: GridVisual?
+    private var visualStyle: VisualizerStyle?
+    private var lastTick = Date()
     static var visualizerSupported: Bool { if #available(macOS 14.2, *) { true } else { false } }
 
     /// Apps where you talk to Claude: the desktop app, terminals and editors with Claude Code.
@@ -478,6 +480,11 @@ final class AppModel: ObservableObject {
         }
         let heights = analyzer.heights(tap.latest(2048), sampleRate: tap.sampleRate)
         if heights != nil { lastSound = Date() }
+        let style = state.visualizerStyle
+        if visualStyle != style || visual == nil { visual = style.makeVisual(); visualStyle = style }
+        let now = Date()
+        visual?.update(heights, rms: heights == nil ? 0 : analyzer.rms, dt: min(0.2, now.timeIntervalSince(lastTick)))
+        lastTick = now
         // Keep the bars through short pauses; hand back the normal lighting after 1.5 s of silence.
         guard Date().timeIntervalSince(lastSound) < 1.5 else {
             if visualizerShowing { visualizerShowing = false; restoreAfterFrames() }
@@ -486,29 +493,23 @@ final class AppModel: ObservableObject {
         visualizerShowing = true
         guard !frameBusy else { return }
         let device = self.device
-        switch state.visualizerStyle {
-        case .bars, .sine:
-            // Per-key frames are slow on this firmware and busy the controller that also scans the keys:
-            // whole cells, at most ~10 fps, changed messages only.
-            guard Date().timeIntervalSince(lastFrameSent) >= (state.visualizerStyle == .sine ? 0.125 : 0.1) else { return }
-            let frame = state.visualizerStyle == .sine
-                ? sine.frame(heights, layout: state.layout)
-                : VisualizerFrame.render(heights ?? Array(repeating: 0, count: VisualizerFrame.columns),
-                                         layout: state.layout)
-            guard frame != lastFrame else { return }
-            let previous = lastFrame
-            lastFrame = frame
-            lastFrameSent = Date()
-            frameBusy = true
-            frameQueue.async {
-                // First frame switches to per-key mode; after that only changed messages are sent.
-                if previous.count == frame.count {
-                    try? device.updatePerKey(frame, from: previous)
-                } else {
-                    try? device.applyPerKey(frame, brightness: 4)
-                }
-                DispatchQueue.main.async { MainActor.assumeIsolated { self.frameBusy = false } }
+        // Per-key frames are slow on this firmware and busy the controller that also scans the keys:
+        // whole cells, at most ~8–10 fps, changed messages only.
+        guard Date().timeIntervalSince(lastFrameSent) >= style.frameInterval,
+              let frame = visual?.frame(layout: state.layout) else { return }
+        guard frame != lastFrame else { return }
+        let previous = lastFrame
+        lastFrame = frame
+        lastFrameSent = Date()
+        frameBusy = true
+        frameQueue.async {
+            // First frame switches to per-key mode; after that only changed messages are sent.
+            if previous.count == frame.count {
+                try? device.updatePerKey(frame, from: previous)
+            } else {
+                try? device.applyPerKey(frame, brightness: 4)
             }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self.frameBusy = false } }
         }
     }
 
