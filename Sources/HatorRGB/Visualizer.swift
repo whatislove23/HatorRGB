@@ -16,6 +16,9 @@ final class SystemAudioTap {
     /// Most recent mono samples (ring buffer), read from the main thread.
     private let lock = NSLock()
     private var ring = [Float](repeating: 0, count: 4096)
+    /// Left / right channels (same as `ring` for mono sources), for the stereo meter.
+    private var ringL = [Float](repeating: 0, count: 4096)
+    private var ringR = [Float](repeating: 0, count: 4096)
     private var writeIndex = 0
     private(set) var sampleRate: Double = 48_000
 
@@ -78,6 +81,18 @@ final class SystemAudioTap {
         return (0..<n).map { ring[(writeIndex - n + $0 + ring.count) % ring.count] }
     }
 
+    /// RMS of the last `count` samples of the left and right channels.
+    func stereoRMS(_ count: Int) -> (left: Float, right: Float) {
+        lock.lock(); defer { lock.unlock() }
+        let n = min(count, ring.count)
+        var l: Float = 0, r: Float = 0
+        for k in 0..<n {
+            let i = (writeIndex - n + k + ring.count) % ring.count
+            l += ringL[i] * ringL[i]; r += ringR[i] * ringR[i]
+        }
+        return (sqrt(l / Float(n)), sqrt(r / Float(n)))
+    }
+
     private func consume(_ input: UnsafePointer<AudioBufferList>) {
         let buffers = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: input))
         guard let first = buffers.first, let data = first.mData else { return }
@@ -89,6 +104,8 @@ final class SystemAudioTap {
             var s: Float = 0
             for c in 0..<channels { s += p[i * channels + c] }
             ring[writeIndex] = s / Float(channels)
+            ringL[writeIndex] = p[i * channels]
+            ringR[writeIndex] = p[i * channels + (channels > 1 ? 1 : 0)]
             writeIndex = (writeIndex + 1) % ring.count
         }
         lock.unlock()
@@ -153,8 +170,8 @@ final class SpectrumAnalyzer {
                 vDSP.absolute(split, result: &mags)
             }
         }
-        // Log-spaced bands from 40 Hz to 14 kHz.
         let binHz = sampleRate / Double(size)
+        // Log-spaced bands from 40 Hz to 14 kHz.
         let lo = log(40.0), hi = log(14_000.0)
         var raw = [Float](repeating: 0, count: bands)
         for b in 0..<bands {

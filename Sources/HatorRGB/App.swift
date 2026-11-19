@@ -18,82 +18,145 @@ struct HatorRGBApp: App {
             EditorView().environmentObject(model)
         }
         .windowResizability(.contentSize)
+    }
+}
 
-        Window("Змійка — HATOR", id: "snake") {
-            SnakeView().environmentObject(model)
+enum MenuTab: String, CaseIterable, Identifiable {
+    case lighting, alerts, music, keys
+    var id: Self { self }
+    var title: String {
+        switch self {
+        case .lighting: "Підсвітка"
+        case .alerts: "Сигнали"
+        case .music: "Музика"
+        case .keys: "Клавіші"
         }
-        .windowResizability(.contentSize)
+    }
+    var symbol: String {
+        switch self {
+        case .lighting: "paintpalette"
+        case .alerts: "bell.badge"
+        case .music: "waveform"
+        case .keys: "command"
+        }
     }
 }
 
 struct MenuView: View {
     @EnvironmentObject var model: AppModel
     @Environment(\.openWindow) private var openWindow
+    @AppStorage("menu.tab") private var tab: MenuTab = .lighting
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("HATOR Gaming Keyboard").font(.headline)
+            HStack(spacing: 6) {
+                Image(systemName: "keyboard").foregroundStyle(.secondary)
+                Text("HATOR").font(.headline)
                 Spacer()
-                Circle().fill(model.connected ? .green : .red).frame(width: 8, height: 8)
+                Circle().fill(model.connected ? .green : .red).frame(width: 7, height: 7)
                 Text(model.connected ? "підключено" : "не знайдено")
                     .font(.caption).foregroundStyle(.secondary)
+                Button { NSApp.terminate(nil) } label: { Image(systemName: "power") }
+                    .buttonStyle(.borderless).help("Вийти")
+                    .padding(.leading, 4)
             }
 
-            Picker("", selection: $model.state.mode) {
-                Text("Ефекти").tag(LightMode.effect)
-                Text("Поклавішно").tag(LightMode.perKey)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
-            if model.state.mode == .effect {
-                EffectControls(settings: $model.state.effect)
-            } else {
-                PerKeyControls(openEditor: openEditor)
+            HStack(spacing: 4) {
+                ForEach(MenuTab.allCases) { t in
+                    TabButton(tab: t, selected: tab == t) { tab = t }
+                }
             }
 
-            Button {
-                openWindow(id: "snake")
-                NSApp.activate(ignoringOtherApps: true)
-            } label: {
-                Label("Змійка на клавіатурі", systemImage: "gamecontroller")
-                    .frame(maxWidth: .infinity)
+            VStack(alignment: .leading, spacing: 10) {
+                switch tab {
+                case .lighting: lighting
+                case .alerts: alerts
+                case .music: Card { VisualizerControls() }
+                case .keys: keys
+                }
             }
-
-            Divider()
-            ClaudeAlertControls()
-            BadgeAlertControls()
-            HotkeyOverlayControls()
-            CallKeyControls()
-            VisualizerControls()
-
-            Divider()
-            FKeyControls()
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if let err = model.lastError {
                 Text(err).font(.caption).foregroundStyle(.red)
             }
 
             Divider()
-            Toggle("Гасити, коли Mac спить або заблокований", isOn: $model.state.darkWhenAway)
-                .toggleStyle(.checkbox).font(.callout)
-            HStack {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Гасити, коли Mac спить або заблокований", isOn: $model.state.darkWhenAway)
+                    .toggleStyle(.trailingCheckbox)
                 Toggle("Запускати при вході", isOn: Binding(
                     get: { model.launchAtLogin }, set: { model.launchAtLogin = $0 }))
-                    .toggleStyle(.checkbox)
-                Spacer()
-                Button("Вийти") { NSApp.terminate(nil) }
+                    .toggleStyle(.trailingCheckbox)
             }
             .font(.callout)
         }
         .padding(14)
-        .frame(width: 320)
+        .frame(width: 340)
+    }
+
+    @ViewBuilder private var lighting: some View {
+        Picker("", selection: $model.state.mode) {
+            Text("Ефекти").tag(LightMode.effect)
+            Text("Поклавішно").tag(LightMode.perKey)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        Card {
+            if model.state.mode == .effect {
+                EffectControls(settings: $model.state.effect)
+            } else {
+                PerKeyControls(openEditor: openEditor)
+            }
+        }
+    }
+
+    @ViewBuilder private var alerts: some View {
+        Card { BadgeAlertControls() }
+    }
+
+    @ViewBuilder private var keys: some View {
+        Card { HotkeyOverlayControls() }
+        Card { FKeyControls() }
     }
 
     private func openEditor() {
         openWindow(id: "editor")
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+private struct TabButton: View {
+    let tab: MenuTab
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: tab.symbol).font(.system(size: 15))
+                Text(tab.title).font(.caption2)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .foregroundStyle(selected ? Color.accentColor : Color.secondary)
+            .background(selected ? Color.accentColor.opacity(0.15) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 7))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// A grouped block of related settings.
+struct Card<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) { content }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+            .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
@@ -119,7 +182,7 @@ struct EffectControls: View {
                     }
                     Spacer()
                     if settings.effect != .staticColor {
-                        Toggle("Веселка", isOn: $settings.rainbow).toggleStyle(.checkbox)
+                        Toggle("Веселка", isOn: $settings.rainbow).toggleStyle(.trailingCheckbox)
                     }
                 }
             }
@@ -169,8 +232,6 @@ struct PerKeyControls: View {
                     set: { model.state.perKeyBrightness = UInt8($0.rounded()) }), in: 0...4, step: 1)
             }
 
-            Toggle("Медіаклавіші: білі, ▶︎ зелена / ⏸ червона", isOn: $model.state.mediaKeysGlow)
-                .toggleStyle(.checkbox)
 
             if !model.state.presets.isEmpty {
                 Text("Пресети").font(.caption).foregroundStyle(.secondary)
@@ -194,17 +255,18 @@ struct FKeyControls: View {
                     Text("⌘ біля пробілу, як на Mac").font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .toggleStyle(.switch).controlSize(.small)
+            .toggleStyle(.trailingSwitch).controlSize(.small)
 
-            HStack {
-                Toggle("F1–F12 як медіаклавіші", isOn: $model.state.remapEnabled)
-                    .toggleStyle(.switch).controlSize(.small)
-                Spacer()
-                Button(expanded ? "Сховати" : "Налаштувати") {
-                    withAnimation { expanded.toggle() }
+            Toggle(isOn: $model.state.remapEnabled) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("F1–F12 як медіаклавіші")
+                    Button(expanded ? "Сховати клавіші" : "Налаштувати клавіші") {
+                        withAnimation { expanded.toggle() }
+                    }
+                    .buttonStyle(.link).font(.caption)
                 }
-                .buttonStyle(.link)
             }
+            .toggleStyle(.trailingSwitch).controlSize(.small)
             if expanded {
                 Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 6) {
                     ForEach(0..<12, id: \.self) { i in
@@ -227,30 +289,6 @@ struct FKeyControls: View {
     }
 }
 
-struct ClaudeAlertControls: View {
-    @EnvironmentObject var model: AppModel
-
-    var body: some View {
-        HStack {
-            Toggle(isOn: $model.state.claudeAlert) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Сигнал від Claude")
-                    Text(model.claudeWaiting.isEmpty
-                         ? "Блимає помаранчевим, коли Claude чекає на тебе"
-                         : "Claude чекає на відповідь (\(model.claudeWaiting.count))")
-                        .font(.caption)
-                        .foregroundStyle(model.claudeWaiting.isEmpty ? Color.secondary : Color.orange)
-                }
-            }
-            .toggleStyle(.switch).controlSize(.small)
-            if !model.claudeWaiting.isEmpty {
-                Spacer()
-                Button("Зняти") { model.clearClaudeAlert() }.controlSize(.small)
-            }
-        }
-    }
-}
-
 /// Apps whose new unread messages (Dock badge) pulse the keyboard in their colour.
 /// Several at once take turns, one colour per breath.
 struct BadgeAlertControls: View {
@@ -260,18 +298,34 @@ struct BadgeAlertControls: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Сповіщення з програм")
-                    Text("Блимає кольором програми, коли приходять нові повідомлення")
+                    Text("Сповіщення")
+                    Text("Блимає кольором програми, коли щось чекає на тебе")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if !model.badgeAlerts.isEmpty {
+                if !model.badgeAlerts.isEmpty || !model.claudeWaiting.isEmpty {
                     Spacer()
-                    Button("Зняти") { model.clearBadgeAlerts() }.controlSize(.small)
+                    Button("Зняти") {
+                        model.clearBadgeAlerts()
+                        model.clearClaudeAlert()
+                    }.controlSize(.small)
                 }
+            }
+            HStack(spacing: 8) {
+                Text("Claude").help("Коли Claude Code чекає на відповідь або дозвіл")
+                Spacer()
+                if model.state.claudeAlert && !model.claudeWaiting.isEmpty {
+                    Text("\(model.claudeWaiting.count)")
+                        .font(.caption.monospacedDigit()).foregroundStyle(.orange)
+                }
+                RoundedRectangle(cornerRadius: 4).fill(Color.orange)
+                    .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(.secondary.opacity(0.5)))
+                    .frame(width: 36, height: 18)
+                    .help("Колір Claude фіксований")
+                Toggle("Claude", isOn: $model.state.claudeAlert).labelsHidden().toggleStyle(.checkbox)
             }
             ForEach($model.state.badgeApps) { $app in
                 HStack(spacing: 8) {
-                    Toggle(app.name, isOn: $app.enabled).toggleStyle(.checkbox)
+                    Text(app.name)
                     Spacer()
                     if let n = model.badgeCounts[app.id], n > 0, app.enabled {
                         Text("\(n)")
@@ -283,6 +337,7 @@ struct BadgeAlertControls: View {
                             model.state.badgeApps[i].color = c
                         }
                     }
+                    Toggle(app.name, isOn: $app.enabled).labelsHidden().toggleStyle(.checkbox)
                 }
             }
         }
@@ -301,7 +356,7 @@ struct HotkeyOverlayControls: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
-            .toggleStyle(.switch).controlSize(.small)
+            .toggleStyle(.trailingSwitch).controlSize(.small)
             if model.state.hotkeyOverlay && !model.axTrusted {
                 HStack {
                     Text("Потрібен дозвіл «Доступність»").font(.caption).foregroundStyle(.orange)
@@ -309,40 +364,6 @@ struct HotkeyOverlayControls: View {
                     Button("Відкрити") { MenuShortcutReader.openSettings() }.controlSize(.small)
                 }
             }
-        }
-    }
-}
-
-struct CallKeyControls: View {
-    @EnvironmentObject var model: AppModel
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Toggle(isOn: Binding(get: { model.state.callMuteKey }, set: { on in
-                if on && !MenuShortcutReader.isTrusted { MenuShortcutReader.requestAccess() }
-                model.state.callMuteKey = on
-            })) {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Мікрофон на дзвінку")
-                    Text(statusText).font(.caption).foregroundStyle(.secondary)
-                }
-            }
-            .toggleStyle(.switch).controlSize(.small)
-            if model.state.callMuteKey && !model.axTrusted {
-                HStack {
-                    Text("Потрібен дозвіл «Доступність»").font(.caption).foregroundStyle(.orange)
-                    Spacer()
-                    Button("Відкрити") { MenuShortcutReader.openSettings() }.controlSize(.small)
-                }
-            }
-        }
-    }
-
-    private var statusText: String {
-        switch model.call {
-        case .none: "Esc червона, коли тебе чути, зелена на mute (Meet, Zoom, Telegram, Slack)"
-        case .live: "На дзвінку: мікрофон увімкнено"
-        case .muted: "На дзвінку: мікрофон вимкнено"
         }
     }
 }
@@ -360,19 +381,16 @@ struct VisualizerControls: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
-        .toggleStyle(.switch).controlSize(.small)
+        .toggleStyle(.trailingSwitch).controlSize(.small)
         .disabled(!AppModel.visualizerSupported)
         if model.state.visualizer {
-            HStack {
-                Picker("Стиль", selection: $model.state.visualizerStyle) {
-                    ForEach(VisualizerStyle.allCases) { Text($0.name).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .disabled(model.state.visualizerMix)
-                Toggle("Mix", isOn: $model.state.visualizerMix)
-                    .toggleStyle(.checkbox)
-                    .help("Перемикати всі стилі по черзі")
+            Picker("Стиль", selection: $model.state.visualizerStyle) {
+                ForEach(VisualizerStyle.allCases) { Text($0.name).tag($0) }
             }
+            .pickerStyle(.menu)
+            .disabled(model.state.visualizerMix)
+            Toggle("Mix: усі стилі по черзі", isOn: $model.state.visualizerMix)
+                .toggleStyle(.trailingCheckbox)
             if model.state.visualizerMix {
                 HStack {
                     Text("Кожні \(Int(model.state.visualizerMixSeconds)) с")
@@ -382,4 +400,26 @@ struct VisualizerControls: View {
             }
         }
     }
+}
+
+/// Label on the left, the control pinned to the right edge.
+struct TrailingToggleStyle: ToggleStyle {
+    var checkbox = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(alignment: .center) {
+            configuration.label
+            Spacer(minLength: 8)
+            if checkbox {
+                Toggle("", isOn: configuration.$isOn).labelsHidden().toggleStyle(.checkbox)
+            } else {
+                Toggle("", isOn: configuration.$isOn).labelsHidden().toggleStyle(.switch)
+            }
+        }
+    }
+}
+
+extension ToggleStyle where Self == TrailingToggleStyle {
+    static var trailingSwitch: TrailingToggleStyle { TrailingToggleStyle() }
+    static var trailingCheckbox: TrailingToggleStyle { TrailingToggleStyle(checkbox: true) }
 }

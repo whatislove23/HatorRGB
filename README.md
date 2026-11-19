@@ -19,19 +19,18 @@ the vendor only ships Windows software, so this one was built by reverse-enginee
 
 ## Features
 
+The menu is split into four tabs: **Lighting**, **Alerts**, **Music** and **Keys**.
+
 - **RGB effects**: Static, Breathe, Wave, Neon, Snake, Reactive, Aurora and Ripple. You can set the colour, background, brightness, speed, direction and rainbow mode. Changes apply live.
 - **Per-key colours**: an editor window where you paint keys by clicking or dragging. ⌥-click picks up a key's colour. Includes fill-all and presets.
 - **Layout calibration**: the app lights each of the 132 LEDs in turn and you press the key that's lit, so the editor matches your exact model.
 - **F1–F12 as Mac media keys**: brightness, Mission Control, Spotlight, Launchpad, sleep, music and volume. Every key is configurable. Remapping happens at the HID driver level (`hidutil`) and affects only the HATOR keyboard; no Accessibility permission is needed.
 - **Win ↔ Alt toggle**: puts ⌘ next to the space bar. Your other System Settings modifier-key settings are kept.
-- **Claude Code alert**: the keyboard softly pulses orange while a Claude Code session waits for your reply or approval. It stops when you answer, or when you come back to Claude or a terminal and touch the keyboard or mouse.
+- **Claude Code alert** (Alerts tab, next to the app notifications): the keyboard softly pulses orange while a Claude Code session waits for your reply or approval. It stops when you answer, or when you come back to Claude or a terminal and touch the keyboard or mouse.
 - **App notifications**: when Telegram (or Slack, Mail) gets new unread messages, the keyboard pulses in that app's colour. It reads the Dock badge, so no permissions are needed, and it stops when you open the app. Muted chats don't count. If several alerts are active at once, including Claude, their colours take turns, one per breath.
 - **Hotkey overlay**: hold ⌘, ⌥ or ⌃ and the keys that have a shortcut in the frontmost app light up, coloured by menu (File, Edit, View…). An on-screen legend shows what each key does. Shortcuts are read from the app's menu bar, so this needs the Accessibility permission. It's off by default.
-- **Mic on calls**: during a Google Meet, Zoom, Telegram or Slack call, Esc is red while your microphone is live and green while you're muted. The mute state is read from the call app's own button, so this needs the Accessibility permission. For Meet, keep the call window on the current desktop.
-- **Media keys glow** (per-key mode): while a player is open, the media F-keys turn white and play/pause turns green when playing or red when paused. This uses the system Now Playing state.
-- **Music visualizer** (macOS 14.2+): reacts to whatever the Mac is playing. **Bars** draws an equaliser across the keys. **Stars** makes keys sparkle with the music: louder means more stars, bass on the left and treble on the right, with a burst on every kick. **Sine** runs a rainbow sine wave across the keys that jumps on the bass and speeds up with the hi-hats. **Mix** cycles through all styles, with an adjustable interval. Needs the "System Audio Recording" permission and hands the lighting back after a moment of silence.
+- **Music visualizer** (macOS 14.2+): reacts to whatever the Mac is playing. **Bars** draws an equaliser across the keys, one straight column per key, showing what changes in each band rather than a constant level. **Stripes** does the same horizontally, one bar per row with bass at the bottom. **Hits** fires a column whenever a new hit or note starts in its band, so the keyboard follows the rhythm. **Stereo** is a level meter from the middle: left channel to the left, right channel to the right. **Stars** makes keys sparkle with the music: louder means more stars, bass on the left and treble on the right, with a burst on every kick. **Sine** runs a rainbow sine wave across the keys that jumps on the bass and speeds up with the hi-hats. **Mix** cycles through all styles, with an adjustable interval. Needs the "System Audio Recording" permission and hands the lighting back after a moment of silence.
 - **Dark when away**: the lighting turns off while the Mac sleeps, the display is off or the screen is locked, and comes back when you unlock. It can be turned off in the menu.
-- **Snake on the keyboard**: every lit key is a pixel and the arrow keys steer.
 - Settings persist and lighting is restored after you reconnect the keyboard. Optional launch at login.
 
 ## Install
@@ -117,19 +116,16 @@ Based on [Daniel Gibson's notes on the Pulsar PCMK TKL](https://gist.github.com/
 
 > **Неофіційний проєкт**, не пов'язаний з HATOR. Розроблено й перевірено на **HATOR Rockfall EVO TKL Optical** (USB ID `0416:b23c`).
 
-**Можливості:**
+**Можливості** (меню розбите на вкладки «Підсвітка», «Сигнали», «Музика» і «Клавіші»):
 - **RGB-ефекти** з кольором, фоном, яскравістю, швидкістю та напрямком.
 - **Поклавішний редактор кольорів** із пресетами та калібруванням розкладки.
 - **F1–F12 як медіаклавіші Mac**: яскравість, Spotlight, сон, музика, гучність. Працює лише для HATOR, дозволи не потрібні.
 - **Перемикач Win ↔ Alt**: ⌘ біля пробілу, як на Mac.
-- **Сигнал від Claude Code**: клавіатура плавно блимає помаранчевим, коли Claude чекає на твою відповідь або апрув. Налаштування хуків описано вище.
+- **Сигнал від Claude Code** (у блоці «Сповіщення» поруч із програмами): клавіатура плавно блимає помаранчевим, коли Claude чекає на твою відповідь або апрув. Налаштування хуків описано вище.
 - **Сповіщення з програм**: нові повідомлення в Telegram (або Slack, Пошті) підсвічують клаву кольором програми. Сигнал зникає, щойно відкриваєш програму. Якщо сигналів кілька, кольори чергуються.
 - **Підсвітка гарячих клавіш**: затисни ⌘, ⌥ або ⌃, і світяться клавіші зі скороченнями поточної програми, кольором відповідного меню. На екрані з'являється підказка, що робить кожна клавіша. Потрібен дозвіл «Доступність».
-- **Мікрофон на дзвінку**: у Google Meet, Zoom, Telegram чи Slack Esc червона, коли тебе чути, і зелена на mute. Потрібен дозвіл «Доступність».
-- **Медіаклавіші** (у режимі «Поклавішно»): поки відкритий плеєр, медіаклавіші білі, а play/pause зелена, коли грає, і червона на паузі.
-- **Візуалізатор музики** (macOS 14.2+): «Стовпчики», коли по клавішах біжить еквалайзер, «Зірки», коли клавіші іскряться під музику (баси ліворуч, верхи праворуч), або «Синусоїда», коли біжить веселкова хвиля, що підскакує на баси. Галочка «Mix» перемикає стилі по черзі, інтервал налаштовується. Потрібен дозвіл на запис системного звуку.
+- **Візуалізатор музики** (macOS 14.2+): «Стовпчики», коли по клавішах біжить еквалайзер (рівні колонки в одну клавішу), «Смуги», коли еквалайзер іде горизонтально по рядах, «Удари», коли колонка вистрілює на кожен новий удар чи ноту у своїй частоті, «Стерео», коли лівий і правий канали розходяться від центру, «Зірки», коли клавіші іскряться під музику (баси ліворуч, верхи праворуч), або «Синусоїда», коли біжить веселкова хвиля, що підскакує на баси. Галочка «Mix» перемикає стилі по черзі, інтервал налаштовується. Потрібен дозвіл на запис системного звуку.
 - **Гасне, коли тебе нема**: підсвітка вимикається, коли Mac спить, екран погас або заблокований, і повертається після розблокування.
-- **Змійка просто на підсвітці клавіатури**, керування стрілками.
 
 **Встановлення:** завантаж zip із [Releases](https://github.com/whatislove23/HatorRGB/releases) і перенеси `HatorRGB.app` у «Програми». Застосунок не нотаризований, тому першого разу відкривай через **правий клік → Відкрити**. Якщо macOS однаково блокує, виконай команду `xattr -dr com.apple.quarantine /Applications/HatorRGB.app`.
 
