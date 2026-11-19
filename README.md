@@ -6,10 +6,13 @@
 Native macOS menu bar app for the <b>HATOR Gaming Keyboard</b> (USB <code>0416:b23c</code>) —<br>
 the vendor only ships Windows software, so this one was built by reverse-engineering the HID protocol.
 </p>
-<p align="center"><img width="400" height="466" alt="image" src="https://github.com/user-attachments/assets/b8d24445-0a37-4f79-b019-3f042fa0c8fd" /></p>
-<p align="center"><img width="983" height="460" alt="image" src="https://github.com/user-attachments/assets/3a2c1ad0-8a41-4f79-afd0-0ba3466d88ac" /></p>
-<p align="center"><img width="983" height="460" alt="image" src="https://github.com/user-attachments/assets/a02ceb89-0ead-41d7-9b9d-95ce0bdb761b" />
-</p>
+<img width="343" height="369" alt="image" src="https://github.com/user-attachments/assets/0ef7b49b-08ab-4c36-8949-cbb125907d4d" />
+<img width="425" height="373" alt="image" src="https://github.com/user-attachments/assets/2a0eeafa-0a8f-4da7-826e-64314c09fcba" />
+<img width="420" height="404" alt="image" src="https://github.com/user-attachments/assets/eb8e2af0-3cdc-476e-84b8-a10ce039e098" />
+<img width="422" height="358" alt="image" src="https://github.com/user-attachments/assets/a40bd448-fe9c-4e71-ac05-4ea7eaebe5cc" />
+<img width="425" height="739" alt="image" src="https://github.com/user-attachments/assets/13d03df3-0065-4345-aec9-70d17dc0cc0e" />
+
+
 
 <p align="center"><a href="#українською">🇺🇦 Українською</a></p>
 
